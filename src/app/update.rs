@@ -99,9 +99,9 @@ impl AppState {
                 self.send(EventToSub::Refresh);
             }
             AppMsg::RefreshMonitors => {
-                // Trigger re-enumeration of displays (hotplug detection)
-                info!("RefreshMonitors message received, triggering re-enumeration");
-                self.send(EventToSub::ReEnumerate);
+                // Trigger full re-enumeration (clear cache for manual refresh)
+                info!("RefreshMonitors message received, triggering full re-enumeration (no cache)");
+                self.send(EventToSub::ReEnumerateFull);
             }
             AppMsg::TogglePermissionView => {
                 self.show_permission_view = !self.show_permission_view;

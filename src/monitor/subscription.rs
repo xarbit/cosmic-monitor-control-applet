@@ -161,7 +161,16 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
 
                             // Transition back to Fetch state with existing sender
                             // The display_cache will be used to avoid re-probing known displays
-                            info!("ReEnumerate event received, re-enumerating (cache has {} displays)", display_cache.len());
+                            info!("ReEnumerate event received (hotplug), re-enumerating with cache ({} displays)", display_cache.len());
+                            state = State::Fetch(Some(tx.clone()));
+                        }
+                        EventToSub::ReEnumerateFull => {
+                            // Clear cache for manual refresh - user wants full re-scan
+                            info!("ReEnumerateFull event received (manual refresh), clearing cache and doing full probe");
+                            display_cache.clear();
+
+                            // Transition back to Fetch state with existing sender
+                            // Empty cache will cause all displays to be probed
                             state = State::Fetch(Some(tx.clone()));
                         }
                     }
