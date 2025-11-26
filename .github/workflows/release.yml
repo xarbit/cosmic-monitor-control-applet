@@ -41,7 +41,7 @@ jobs:
       - name: Build RPM
         run: |
           cd rpm
-          rpmbuild -bb cosmic-monitor-control-applet.spec
+          ./build-rpm.sh
 
       - name: Upload RPM
         uses: actions/upload-artifact@v4
