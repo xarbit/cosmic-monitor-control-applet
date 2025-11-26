@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    os::fd::AsRawFd,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -116,12 +117,13 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
 
                     let mut displays = HashMap::new();
 
-                    debug!("start enumerate");
+                    info!("=== START ENUMERATE ===");
 
                     let mut some_failed = false;
 
                     // Enumerate DDC/CI displays concurrently
                     let ddc_displays = DdcCiDisplay::enumerate();
+                    info!("Found {} DDC/CI display(s) to probe", ddc_displays.len());
                     let mut ddc_tasks = Vec::new();
 
                     for display in ddc_displays {
@@ -168,10 +170,12 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                     for task in ddc_tasks {
                         match task.await {
                             Ok(Ok((id, mon, backend))) => {
+                                info!("Successfully initialized DDC/CI display: {} ({})", mon.name, id);
                                 res.insert(id.clone(), mon);
                                 displays.insert(id, Arc::new(Mutex::new(backend)));
                             }
-                            Ok(Err(_)) => {
+                            Ok(Err(e)) => {
+                                error!("Failed to initialize DDC/CI display: {}", e);
                                 some_failed = true;
                             }
                             Err(e) => {
@@ -245,7 +249,7 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                         continue;
                     }
 
-                    debug!("end enumerate");
+                    info!("=== END ENUMERATE: Found {} monitors ===", res.len());
 
                     let (tx, mut rx) = if let Some(sender) = existing_sender.take() {
                         // Reuse existing sender for re-enumeration
@@ -262,6 +266,10 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                         .send(AppMsg::SubscriptionReady((res, tx.clone())))
                         .await
                         .unwrap();
+
+                    // Reset failed_attempts after successful enumeration
+                    failed_attempts = 0;
+
                     state = State::Ready(displays, tx, rx);
                 }
                 State::Ready(displays, tx, rx) => {
@@ -310,11 +318,125 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                         EventToSub::ReEnumerate => {
                             // Transition back to Fetch state with existing sender
                             // This will re-enumerate displays while keeping the same channel
+                            info!("ReEnumerate event received, re-enumerating displays");
                             state = State::Fetch(Some(tx.clone()));
                         }
                     }
                 }
             }
         }
+    })
+}
+
+/// Subscription for automatic display hotplug detection
+/// Uses a dedicated blocking thread because udev types are not Send
+pub fn hotplug_sub() -> impl Stream<Item = AppMsg> {
+    stream::channel(10, |mut output| async move {
+        // Create a channel to communicate from blocking thread to async task
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+        // Spawn a dedicated blocking thread for udev monitoring
+        std::thread::spawn(move || {
+            // Create udev monitor in the blocking thread
+            // Monitor both drm (general display) and i2c-dev (DDC/CI) subsystems
+            let socket = match udev::MonitorBuilder::new()
+                .and_then(|builder| builder.match_subsystem("drm"))
+                .and_then(|builder| builder.match_subsystem("i2c-dev"))
+                .and_then(|builder| builder.listen())
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to initialize display hotplug monitoring: {}", e);
+                    return;
+                }
+            };
+
+            info!("Display hotplug monitoring started (monitoring drm + i2c-dev subsystems)");
+
+            let fd = socket.as_raw_fd();
+
+            // Poll the socket and process events
+            loop {
+                // Use poll to wait for socket to be readable
+                let mut poll_fd = libc::pollfd {
+                    fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                };
+
+                debug!("Waiting for udev events...");
+
+                // Block until socket has data (negative timeout = wait forever)
+                let poll_result = unsafe { libc::poll(&mut poll_fd, 1, -1) };
+
+                if poll_result < 0 {
+                    error!("Poll error: {}", std::io::Error::last_os_error());
+                    break;
+                }
+
+                if poll_result == 0 {
+                    // Timeout (shouldn't happen with -1 timeout)
+                    debug!("Poll timeout");
+                    continue;
+                }
+
+                debug!("Poll returned {}, revents: {}", poll_result, poll_fd.revents);
+
+                // Socket is ready, check for events
+                if let Some(event) = socket.iter().next() {
+                    info!("udev event: type={:?}, subsystem={:?}, devtype={:?}, syspath={:?}",
+                          event.event_type(),
+                          event.subsystem(),
+                          event.devtype(),
+                          event.syspath());
+
+                    match event.event_type() {
+                        udev::EventType::Add | udev::EventType::Remove | udev::EventType::Change => {
+                            info!("Display event detected: {:?} at {:?}",
+                                  event.event_type(), event.syspath());
+
+                            // Send notification to async task (non-blocking)
+                            match tx.try_send(()) {
+                                Ok(_) => {},
+                                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                                    debug!("Hotplug channel full, skipping event (will debounce)");
+                                }
+                                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                                    error!("Hotplug channel closed, stopping monitor");
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                } else {
+                    debug!("Poll indicated ready but no event available");
+                }
+            }
+
+            error!("Display hotplug monitoring stopped");
+        });
+
+        // Async task receives notifications from blocking thread
+        while rx.recv().await.is_some() {
+            info!("Hotplug event received, debouncing...");
+
+            // Debounce: drain all pending events
+            while rx.try_recv().is_ok() {
+                // Drain the channel
+            }
+
+            // Wait for hardware to fully initialize
+            // DDC/CI displays need time to become available after hotplug
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+
+            // Trigger re-enumeration
+            info!("Hotplug settled, sending AppMsg::RefreshMonitors");
+            if output.send(AppMsg::RefreshMonitors).await.is_err() {
+                error!("Failed to send refresh message");
+            }
+        }
+
+        info!("Hotplug monitoring channel closed");
     })
 }

@@ -191,9 +191,11 @@ pub enum AppMsg {
 impl AppState {
     pub fn send(&self, e: EventToSub) {
         if let Some(sender) = &self.sender {
-            sender.send(e).unwrap();
-
-            // block_on(sender.send(e)).unwrap();
+            if let Err(err) = sender.send(e) {
+                // This can happen if the monitor subscription is already re-enumerating
+                // Just log it, don't panic
+                debug!("Failed to send event to monitor subscription: {:?}", err);
+            }
         }
     }
 
@@ -263,7 +265,12 @@ impl cosmic::Application for AppState {
     }
 
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
-        debug!("{:?}", message);
+        // Log ALL messages at info level for debugging
+        match &message {
+            AppMsg::RefreshMonitors => info!(">>> UPDATE: AppMsg::RefreshMonitors"),
+            AppMsg::SubscriptionReady((monitors, _)) => info!(">>> UPDATE: AppMsg::SubscriptionReady with {} monitors", monitors.len()),
+            _ => debug!("{:?}", message),
+        }
 
         match message {
             AppMsg::TogglePopup => {
@@ -326,6 +333,11 @@ impl cosmic::Application for AppState {
                 }
             }
             AppMsg::SubscriptionReady((monitors, sender)) => {
+                info!("SubscriptionReady received with {} monitors", monitors.len());
+                for (id, m) in monitors.iter() {
+                    info!("  - Monitor: {} ({})", m.name, id);
+                }
+
                 self.monitors = monitors
                     .into_iter()
                     .map(|(id, m)| {
@@ -382,6 +394,7 @@ impl cosmic::Application for AppState {
             }
             AppMsg::RefreshMonitors => {
                 // Trigger re-enumeration of displays (hotplug detection)
+                info!("RefreshMonitors message received, triggering re-enumeration");
                 self.send(EventToSub::ReEnumerate);
             }
             AppMsg::Noop => {
@@ -418,6 +431,7 @@ impl cosmic::Application for AppState {
                 .watch_config(THEME_MODE_ID)
                 .map(|u| AppMsg::ThemeModeConfigChanged(u.config)),
             Subscription::run(monitor::sub),
+            Subscription::run(monitor::hotplug_sub),
             config::sub(),
         ];
 

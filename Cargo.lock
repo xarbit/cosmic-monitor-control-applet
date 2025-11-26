@@ -1038,6 +1038,7 @@ dependencies = [
  "hidapi",
  "i18n-embed",
  "i18n-embed-fl",
+ "libc",
  "libcosmic",
  "rust-embed",
  "serde",
@@ -1045,6 +1046,7 @@ dependencies = [
  "tracing",
  "tracing-journald",
  "tracing-subscriber",
+ "udev 0.8.0",
  "zbus 5.9.0",
 ]
 
@@ -2286,7 +2288,7 @@ dependencies = [
  "i2c",
  "i2c-linux-sys",
  "resize-slice",
- "udev",
+ "udev 0.2.0",
 ]
 
 [[package]]
@@ -5312,6 +5314,18 @@ checksum = "47504d1a49b2ea1b133e7ddd1d9f0a83cf03feb9b440c2c470d06db4589cf301"
 dependencies = [
  "libc",
  "libudev-sys",
+]
+
+[[package]]
+name = "udev"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50051c6e22be28ee6f217d50014f3bc29e81c20dc66ff7ca0d5c5226e1dcc5a1"
+dependencies = [
+ "io-lifetimes",
+ "libc",
+ "libudev-sys",
+ "pkg-config",
 ]
 
 [[package]]
