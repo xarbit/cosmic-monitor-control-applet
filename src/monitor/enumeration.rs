@@ -54,14 +54,15 @@ pub async fn enumerate_displays(
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
 
-                // Retry logic for DDC/CI length bit errors
-                // Some monitors return "Expected DDC/CI length bit" error on first attempts
-                // but work correctly after 2-3 retries
+                // Retry logic for DDC/CI communication errors
+                // After hotplug, DDC/CI may not be ready immediately
+                // Some monitors need multiple attempts with longer delays
                 let brightness = {
                     let mut last_error = None;
                     let mut brightness_value = None;
 
-                    for attempt in 1..=3 {
+                    // Try up to 5 times with increasing delays
+                    for attempt in 1..=5 {
                         match backend.get_brightness() {
                             Ok(v) => {
                                 if attempt > 1 {
@@ -73,8 +74,10 @@ pub async fn enumerate_displays(
                             Err(e) => {
                                 debug!("DDC/CI attempt {} failed: {}", attempt, e);
                                 last_error = Some(e);
-                                if attempt < 3 {
-                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                if attempt < 5 {
+                                    // Increase delay for each retry (100ms, 200ms, 300ms, 400ms)
+                                    let delay_ms = attempt as u64 * 100;
+                                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                                 }
                             }
                         }
@@ -84,7 +87,7 @@ pub async fn enumerate_displays(
                         Some(v) => v,
                         None => {
                             let err = last_error.unwrap();
-                            error!("can't get_vcp_feature after 3 attempts: {}", err);
+                            error!("can't get_vcp_feature after 5 attempts: {}", err);
                             return Err(err);
                         }
                     }

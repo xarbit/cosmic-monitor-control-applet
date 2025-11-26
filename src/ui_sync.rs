@@ -15,6 +15,8 @@ use zbus::{proxy, Connection};
 #[cfg(feature = "brightness-sync-daemon")]
 use crate::app::AppMsg;
 #[cfg(feature = "brightness-sync-daemon")]
+use crate::brightness::BrightnessCalculator;
+#[cfg(feature = "brightness-sync-daemon")]
 use crate::config::{Config, CONFIG_VERSION};
 #[cfg(feature = "brightness-sync-daemon")]
 use crate::app::APPID;
@@ -108,40 +110,47 @@ async fn subscribe_to_brightness_changes(
             };
             let percentage = percentage.min(100);
 
-            debug!("COSMIC brightness: {}% -> calculating UI slider values", percentage);
+            debug!(
+                percentage = %percentage,
+                "COSMIC brightness changed, calculating UI slider values"
+            );
 
             // Load current config
             let config = match Config::get_entry(&config_handler) {
                 Ok(config) => config,
                 Err((errs, config)) => {
-                    warn!("Errors loading config: {:?}, using defaults", errs);
+                    warn!(
+                        errors = ?errs,
+                        "Errors loading config, using defaults"
+                    );
                     config
                 }
             };
+
+            // Use BrightnessCalculator for consistent calculations
+            let calculator = BrightnessCalculator::new(&config);
 
             // Get all display IDs from DisplayManager
             let display_ids = display_manager.get_all_ids().await;
 
             // Calculate brightness for each monitor and update UI
             for id in display_ids {
-                if !config.is_sync_enabled(&id) {
-                    debug!("Skipping UI update for {} (sync disabled)", id);
+                if !calculator.is_sync_enabled(&id) {
+                    debug!(
+                        display_id = %id,
+                        "Skipping UI update (sync disabled)"
+                    );
                     continue;
                 }
 
-                let slider_value = percentage as f32 / 100.0;
+                // Calculate brightness using shared calculator
+                let gamma_corrected = calculator.calculate_for_display(percentage, &id);
 
-                // Apply gamma correction for this monitor (same as daemon)
-                let gamma = config.get_gamma_map(&id);
-                let mut gamma_corrected = crate::app::get_mapped_brightness(slider_value, gamma);
-
-                // Apply minimum brightness clamp
-                let min_brightness = config.get_min_brightness(&id);
-                if gamma_corrected < min_brightness {
-                    gamma_corrected = min_brightness;
-                }
-
-                debug!("Updating UI for {}: slider={:.2}, gamma_corrected={}%", id, slider_value, gamma_corrected);
+                debug!(
+                    display_id = %id,
+                    brightness = %gamma_corrected,
+                    "Updating UI slider"
+                );
 
                 // Send calculated brightness to UI (no DDC read needed!)
                 if output.send(AppMsg::BrightnessWasUpdated(id, gamma_corrected)).await.is_err() {

@@ -11,20 +11,16 @@
 //! Only activates when external displays are detected.
 
 #[cfg(feature = "brightness-sync-daemon")]
-use anyhow::{Context, Result};
-#[cfg(feature = "brightness-sync-daemon")]
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 #[cfg(feature = "brightness-sync-daemon")]
 use zbus::{proxy, Connection};
 #[cfg(feature = "brightness-sync-daemon")]
 use cosmic::cosmic_config::{Config as CosmicConfig, CosmicConfigEntry};
 
 #[cfg(feature = "brightness-sync-daemon")]
-use crate::protocols::DisplayProtocol;
+use crate::error::{AppError, Result};
 #[cfg(feature = "brightness-sync-daemon")]
-use crate::protocols::ddc_ci::DdcCiDisplay;
-#[cfg(all(feature = "apple-hid-displays", feature = "brightness-sync-daemon"))]
-use crate::protocols::apple_hid::AppleHidDisplay;
+use crate::brightness::BrightnessCalculator;
 #[cfg(feature = "brightness-sync-daemon")]
 use crate::config::{Config, CONFIG_VERSION};
 #[cfg(feature = "brightness-sync-daemon")]
@@ -83,18 +79,10 @@ impl BrightnessSyncDaemon {
 
 
         // Load configuration handler for runtime config access
-        let config_handler = match CosmicConfig::new(APPID, CONFIG_VERSION) {
-            Ok(handler) => {
-                tracing::info!("Loaded config for per-monitor F1/F2 sync settings");
-                handler
-            }
-            Err(err) => {
-                tracing::warn!("Failed to load config: {}, monitors will default to sync enabled", err);
-                CosmicConfig::new(APPID, CONFIG_VERSION).unwrap_or_else(|e| {
-                    panic!("Cannot create config handler: {}", e);
-                })
-            }
-        };
+        let config_handler = CosmicConfig::new(APPID, CONFIG_VERSION)
+            .map_err(|e| AppError::Config(format!("Failed to create config handler: {}", e)))?;
+
+        tracing::info!("Loaded config for per-monitor F1/F2 sync settings");
 
         tracing::info!(
             "Found {} external display(s) in DisplayManager, enabling brightness sync daemon with per-monitor control",
@@ -112,22 +100,15 @@ impl BrightnessSyncDaemon {
         tracing::info!("Starting brightness sync daemon");
 
         // Connect to session bus
-        let connection = Connection::session()
-            .await
-            .context("Failed to connect to D-Bus session bus")?;
+        let connection = Connection::session().await?;
 
         // Create proxy to COSMIC Settings Daemon
-        let proxy = CosmicSettingsDaemonProxy::new(&connection)
-            .await
-            .context("Failed to create COSMIC Settings Daemon proxy")?;
+        let proxy = CosmicSettingsDaemonProxy::new(&connection).await?;
 
         tracing::info!("Connected to COSMIC Settings Daemon");
 
         // Get max brightness for conversion
-        let max_brightness = proxy
-            .max_display_brightness()
-            .await
-            .context("Failed to get max display brightness")?;
+        let max_brightness = proxy.max_display_brightness().await?;
 
         tracing::info!("Max display brightness: {}", max_brightness);
 
@@ -182,12 +163,16 @@ impl BrightnessSyncDaemon {
                 let config = match Config::get_entry(&self.config_handler) {
                     Ok(config) => config,
                     Err((errs, config)) => {
-                        tracing::warn!("Errors loading config: {:?}, using defaults", errs);
+                        tracing::warn!(
+                            errors = ?errs,
+                            "Errors loading config, using defaults"
+                        );
                         config
                     }
                 };
 
-                let slider_value = percentage as f32 / 100.0;
+                // Use BrightnessCalculator for consistent calculations
+                let calculator = BrightnessCalculator::new(&config);
 
                 // Apply brightness to all displays in parallel
                 let mut tasks = Vec::new();
@@ -198,98 +183,145 @@ impl BrightnessSyncDaemon {
                 let display_ids = self.display_manager.get_all_ids().await;
 
                 for id in display_ids {
-                    if config.is_sync_enabled(&id) {
-                        // Get display from DisplayManager
-                        let display = match self.display_manager.get(&id).await {
-                            Some(d) => d,
-                            None => {
-                                tracing::warn!("Display {} not found in DisplayManager", id);
-                                continue;
-                            }
-                        };
-                        // Apply gamma correction for this monitor
-                        let gamma = config.get_gamma_map(&id);
-                        let mut gamma_corrected = crate::app::get_mapped_brightness(slider_value, gamma);
+                    if !calculator.is_sync_enabled(&id) {
+                        tracing::debug!(
+                            display_id = %id,
+                            "Skipping brightness sync (sync disabled)"
+                        );
+                        continue;
+                    }
 
-                        // Apply minimum brightness clamp
-                        let min_brightness = config.get_min_brightness(&id);
-                        if gamma_corrected < min_brightness {
-                            gamma_corrected = min_brightness;
+                    // Get display from DisplayManager
+                    let display = match self.display_manager.get(&id).await {
+                        Some(d) => d,
+                        None => {
+                            tracing::warn!(
+                                display_id = %id,
+                                "Display not found in DisplayManager"
+                            );
+                            continue;
                         }
+                    };
 
-                        // Check if brightness actually changed or if at min/max boundary
-                        let last_value = last_brightness_map.get(&id).copied();
+                    // Calculate brightness using shared calculator
+                    let gamma_corrected = calculator.calculate_for_display(percentage, &id);
 
-                        // Skip if brightness hasn't changed
-                        if last_value == Some(gamma_corrected) {
-                            // Log if we're at a boundary
+                    // Check if brightness actually changed or if at min/max boundary
+                    let last_value = last_brightness_map.get(&id).copied();
+
+                    // Skip if brightness hasn't changed
+                    if last_value == Some(gamma_corrected) {
+                        // Log if we're at a boundary
+                        if gamma_corrected == 0 {
+                            tracing::info!(
+                                display_id = %id,
+                                brightness = %gamma_corrected,
+                                "Display at minimum brightness"
+                            );
+                        } else if gamma_corrected == 100 {
+                            tracing::info!(
+                                display_id = %id,
+                                brightness = %gamma_corrected,
+                                "Display at maximum brightness"
+                            );
+                        } else {
+                            tracing::debug!(
+                                display_id = %id,
+                                brightness = %gamma_corrected,
+                                "Skipping - brightness unchanged"
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Skip if we're at a boundary and trying to go further in the same direction
+                    if let Some(last) = last_value {
+                        if (gamma_corrected == 0 && last == 0 && gamma_corrected <= last) ||
+                           (gamma_corrected == 100 && last == 100 && gamma_corrected >= last) {
                             if gamma_corrected == 0 {
-                                tracing::info!("Display {} at minimum brightness (0%)", id);
-                            } else if gamma_corrected == 100 {
-                                tracing::info!("Display {} at maximum brightness (100%)", id);
+                                tracing::info!(
+                                    display_id = %id,
+                                    brightness = %gamma_corrected,
+                                    "Display at minimum brightness"
+                                );
                             } else {
-                                tracing::debug!("Skipping display {} - brightness unchanged at {}%", id, gamma_corrected);
+                                tracing::info!(
+                                    display_id = %id,
+                                    brightness = %gamma_corrected,
+                                    "Display at maximum brightness"
+                                );
                             }
                             continue;
                         }
+                    }
 
-                        // Skip if we're at a boundary and trying to go further in the same direction
-                        if let Some(last) = last_value {
-                            if (gamma_corrected == 0 && last == 0 && gamma_corrected <= last) ||
-                               (gamma_corrected == 100 && last == 100 && gamma_corrected >= last) {
-                                if gamma_corrected == 0 {
-                                    tracing::info!("Display {} at minimum brightness (0%)", id);
-                                } else {
-                                    tracing::info!("Display {} at maximum brightness (100%)", id);
-                                }
-                                continue;
+                    // Update last brightness
+                    last_brightness_map.insert(id.clone(), gamma_corrected);
+
+                    tracing::debug!(
+                        display_id = %id,
+                        from = %last_value.unwrap_or(0),
+                        to = %gamma_corrected,
+                        "Sending brightness command"
+                    );
+
+                    // Clone what we need for the async task
+                    let id_clone = id.clone();
+                    let display_clone = display.clone();
+
+                    // Spawn blocking task for each display to set brightness in parallel
+                    // Note: We use spawn_blocking to move blocking I/O off the async runtime
+                    let task = tokio::task::spawn_blocking(move || {
+                        let start = std::time::Instant::now();
+
+                        // Use blocking_lock() to acquire the lock from a blocking context
+                        // This is the proper way to lock tokio::Mutex from within spawn_blocking
+                        let mut display_guard = display_clone.blocking_lock();
+
+                        // Retry once if first attempt fails
+                        // DDC/CI protocol requires 40ms between commands, so we add 50ms delay before retry
+                        match display_guard.set_brightness(gamma_corrected) {
+                            Ok(_) => {
+                                let elapsed = start.elapsed();
+                                tracing::info!(
+                                    display_id = %id_clone,
+                                    brightness = %gamma_corrected,
+                                    elapsed_ms = %elapsed.as_millis(),
+                                    "Set brightness successfully"
+                                );
                             }
-                        }
-
-                        // Update last brightness
-                        last_brightness_map.insert(id.clone(), gamma_corrected);
-
-                        tracing::debug!("Sending brightness command to {} ({}% -> {}%)",
-                            id, last_value.unwrap_or(0), gamma_corrected);
-
-                        // Clone what we need for the async task
-                        let id_clone = id.clone();
-                        let display_clone = display.clone();
-
-                        // Spawn blocking task for each display to set brightness in parallel
-                        let task = tokio::task::spawn_blocking(move || {
-                            let start = std::time::Instant::now();
-                            let mut display_guard = futures::executor::block_on(display_clone.lock());
-
-                            // Retry once if first attempt fails
-                            // DDC/CI protocol requires 40ms between commands, so we add 50ms delay before retry
-                            match display_guard.set_brightness(gamma_corrected) {
-                                Ok(_) => {
-                                    let elapsed = start.elapsed();
-                                    tracing::info!("Set {} to {}% in {:?}", id_clone, gamma_corrected, elapsed);
-                                }
-                                Err(e) => {
-                                    tracing::debug!("Display {} first attempt failed: {}, waiting 50ms before retry", id_clone, e);
-                                    // DDC/CI spec requires 40ms between commands, use 50ms to be safe
-                                    std::thread::sleep(std::time::Duration::from_millis(50));
-                                    match display_guard.set_brightness(gamma_corrected) {
-                                        Ok(_) => {
-                                            let elapsed = start.elapsed();
-                                            tracing::info!("Set {} to {}% in {:?} (succeeded on retry)", id_clone, gamma_corrected, elapsed);
-                                        }
-                                        Err(e2) => {
-                                            tracing::error!("Failed to set brightness on display {}: {}", id_clone, e2);
-                                        }
+                            Err(e) => {
+                                tracing::debug!(
+                                    display_id = %id_clone,
+                                    error = %e,
+                                    "First attempt failed, retrying after 50ms"
+                                );
+                                // DDC/CI spec requires 40ms between commands, use 50ms to be safe
+                                std::thread::sleep(std::time::Duration::from_millis(50));
+                                match display_guard.set_brightness(gamma_corrected) {
+                                    Ok(_) => {
+                                        let elapsed = start.elapsed();
+                                        tracing::info!(
+                                            display_id = %id_clone,
+                                            brightness = %gamma_corrected,
+                                            elapsed_ms = %elapsed.as_millis(),
+                                            "Set brightness successfully (retry)"
+                                        );
+                                    }
+                                    Err(e2) => {
+                                        tracing::error!(
+                                            display_id = %id_clone,
+                                            error = %e2,
+                                            "Failed to set brightness after retry"
+                                        );
                                     }
                                 }
                             }
-                        });
+                        }
+                    });
 
-                        tasks.push(task);
-                        synced_count += 1;
-                    } else {
-                        tracing::debug!("Skipping brightness sync for display {} (sync disabled)", id);
-                    }
+                    tasks.push(task);
+                    synced_count += 1;
                 }
 
                 // Release the lock before awaiting tasks

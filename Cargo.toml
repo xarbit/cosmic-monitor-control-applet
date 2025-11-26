@@ -27,6 +27,7 @@ tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros", "net"]
 serde = "1"
 dirs = "6"
 anyhow = "1"
+thiserror = "2"
 udev = "0.8"
 libc = "0.2"
 zbus = { version = "5", optional = true }

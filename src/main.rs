@@ -8,6 +8,7 @@ use crate::localize::localize;
 extern crate tracing;
 
 mod app;
+mod brightness;
 #[cfg(feature = "brightness-sync-daemon")]
 mod daemon;
 #[cfg(feature = "brightness-sync-daemon")]
@@ -15,6 +16,7 @@ mod ui_sync;
 mod config;
 #[cfg(feature = "apple-hid-displays")]
 mod devices;
+mod error;
 mod hotplug;
 mod icon;
 mod localize;

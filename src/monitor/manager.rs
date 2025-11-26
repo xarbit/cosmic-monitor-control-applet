@@ -4,6 +4,40 @@
 //! This module provides a singleton display manager that manages all external
 //! displays. Both the UI and daemon access displays through this manager,
 //! ensuring only one I2C connection per physical monitor.
+//!
+//! # Architecture
+//!
+//! The DisplayManager maintains a singleton HashMap of display backends that is
+//! shared between the UI subscription and the brightness sync daemon. This ensures
+//! only one I2C connection exists per physical monitor, preventing DDC/CI protocol
+//! timing violations that occur when multiple processes attempt to access the same
+//! display simultaneously.
+//!
+//! # Thread Safety
+//!
+//! Uses `Arc<RwLock<HashMap>>` for concurrent access:
+//! - Read operations (display enumeration, getting displays) use read locks
+//! - Write operations (adding/removing displays) use write locks
+//! - The DisplayManager itself uses `Arc` for cheap cloning across async contexts
+//!
+//! # Usage
+//!
+//! ```no_run
+//! use cosmic_ext_applet_external_monitor_brightness::monitor::DisplayManager;
+//!
+//! # async fn example() {
+//! let manager = DisplayManager::new();
+//!
+//! // Get a display
+//! if let Some(display) = manager.get("display-123").await {
+//!     let mut guard = display.lock().await;
+//!     // Use display
+//! }
+//!
+//! // Get all display IDs
+//! let ids = manager.get_all_ids().await;
+//! # }
+//! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -27,22 +61,52 @@ impl DisplayManager {
         }
     }
 
-    /// Get a reference to a display by ID
+    /// Get a reference to a display backend by ID
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique display identifier
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Arc<Mutex<DisplayBackend>>)` if display exists
+    /// * `None` if display not found
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn example(manager: cosmic_ext_applet_external_monitor_brightness::monitor::DisplayManager) {
+    /// if let Some(display) = manager.get("display-123").await {
+    ///     let mut guard = display.lock().await;
+    ///     let brightness = guard.get_brightness().unwrap();
+    /// }
+    /// # }
+    /// ```
     pub async fn get(&self, id: &str) -> Option<Arc<tokio::sync::Mutex<DisplayBackend>>> {
         let displays = self.displays.read().await;
         displays.get(id).cloned()
     }
 
-    /// Get all display IDs
+    /// Get all display IDs currently managed
+    ///
+    /// # Returns
+    ///
+    /// Vector of display IDs
     pub async fn get_all_ids(&self) -> Vec<DisplayId> {
         let displays = self.displays.read().await;
         displays.keys().cloned().collect()
     }
 
-    /// Update the display map with new displays
+    /// Update the display map with newly enumerated displays
     ///
-    /// This merges new displays with existing ones, keeping existing
-    /// connections alive and only adding new ones.
+    /// This intelligently merges new displays with existing ones:
+    /// - Keeps existing display connections alive (no re-initialization)
+    /// - Adds newly discovered displays
+    /// - Removes displays that are no longer present
+    ///
+    /// # Arguments
+    ///
+    /// * `new_displays` - HashMap of newly enumerated displays
     pub async fn update_displays(&self, new_displays: HashMap<DisplayId, Arc<tokio::sync::Mutex<DisplayBackend>>>) {
         let mut displays = self.displays.write().await;
 
@@ -66,6 +130,16 @@ impl DisplayManager {
     }
 
     /// Clear all displays (for full re-enumeration)
+    ///
+    /// This removes all displays from the manager, forcing a complete
+    /// re-initialization on the next enumeration. Useful for debugging
+    /// or handling major system changes.
+    ///
+    /// # Note
+    ///
+    /// Currently unused but kept as part of the public API for future use
+    /// cases such as manual refresh or recovery scenarios.
+    #[allow(dead_code)]
     pub async fn clear(&self) {
         let mut displays = self.displays.write().await;
         displays.clear();

@@ -131,13 +131,16 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                 let id_clone = id.clone();
 
                                 // Read brightness in spawn_blocking with retry logic
+                                // Note: We use spawn_blocking to move blocking I/O off the async runtime
                                 let res = tokio::task::spawn_blocking(move || {
-                                    let mut display_guard = futures::executor::block_on(display.lock());
+                                    // Use blocking_lock() to acquire the lock from a blocking context
+                                    // This is the proper way to lock tokio::Mutex from within spawn_blocking
+                                    let mut display_guard = display.blocking_lock();
 
                                     // Retry once if first attempt fails (DDC/CI may be busy)
                                     match display_guard.get_brightness() {
                                         Ok(v) => Ok(v),
-                                        Err(e) => {
+                                        Err(_e) => {
                                             // DDC/CI may still be processing previous command
                                             // Wait longer to ensure it's ready
                                             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -159,7 +162,13 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                             .await
                                             .unwrap();
                                     }
-                                    Err(err) => error!("{:?}", err),
+                                    Err(err) => {
+                                        error!(
+                                            display_id = %id_clone,
+                                            error = ?err,
+                                            "Failed to get brightness"
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -168,16 +177,29 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                             let display = match display_manager.get(&id).await {
                                 Some(d) => d,
                                 None => {
-                                    error!("Display {} not found in manager", id);
+                                    error!(
+                                        display_id = %id,
+                                        "Display not found in manager"
+                                    );
                                     continue;
                                 }
                             };
 
+                            let id_clone = id.clone();
+
+                            // Set brightness in spawn_blocking to move blocking I/O off async runtime
                             let j = tokio::task::spawn_blocking(move || {
-                                if let Err(err) = futures::executor::block_on(display.lock())
-                                    .set_brightness(value)
-                                {
-                                    error!("{:?}", err);
+                                // Use blocking_lock() to acquire the lock from a blocking context
+                                // This is the proper way to lock tokio::Mutex from within spawn_blocking
+                                let mut display_guard = display.blocking_lock();
+
+                                if let Err(err) = display_guard.set_brightness(value) {
+                                    error!(
+                                        display_id = %id_clone,
+                                        brightness = %value,
+                                        error = ?err,
+                                        "Failed to set brightness"
+                                    );
                                 }
                             });
 
