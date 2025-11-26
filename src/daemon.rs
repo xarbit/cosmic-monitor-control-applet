@@ -13,9 +13,7 @@
 #[cfg(feature = "brightness-sync-daemon")]
 use anyhow::{Context, Result};
 #[cfg(feature = "brightness-sync-daemon")]
-use std::sync::Arc;
-#[cfg(feature = "brightness-sync-daemon")]
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "brightness-sync-daemon")]
 use zbus::{proxy, Connection};
 #[cfg(feature = "brightness-sync-daemon")]
@@ -51,7 +49,7 @@ trait CosmicSettingsDaemon {
 
 #[cfg(feature = "brightness-sync-daemon")]
 pub struct BrightnessSyncDaemon {
-    displays: Arc<Mutex<Vec<(String, Box<dyn DisplayProtocol>)>>>,  // (id, display) pairs
+    displays: Vec<(String, Arc<Mutex<Box<dyn DisplayProtocol>>>)>,  // (id, display) pairs wrapped for thread-safe access
     config_handler: CosmicConfig,
 }
 
@@ -60,7 +58,7 @@ impl BrightnessSyncDaemon {
     /// Create a new brightness sync daemon
     /// Returns None if no external displays are detected
     pub async fn new() -> Result<Option<Self>> {
-        let mut displays: Vec<(String, Box<dyn DisplayProtocol>)> = Vec::new();
+        let mut displays: Vec<(String, Arc<Mutex<Box<dyn DisplayProtocol>>>)> = Vec::new();
 
         // Enumerate DDC/CI displays and test them
         let ddc_displays = DdcCiDisplay::enumerate();
@@ -72,7 +70,7 @@ impl BrightnessSyncDaemon {
             match display.get_brightness() {
                 Ok(_) => {
                     tracing::info!("DDC/CI display {} is working, adding to daemon", id);
-                    displays.push((id, Box::new(display)));
+                    displays.push((id, Arc::new(Mutex::new(Box::new(display)))));
                 }
                 Err(e) => {
                     tracing::debug!("DDC/CI display {} failed probe, skipping: {}", id, e);
@@ -94,7 +92,7 @@ impl BrightnessSyncDaemon {
                 match display.get_brightness() {
                     Ok(_) => {
                         tracing::info!("Apple HID display {} is working, adding to daemon", id);
-                        displays.push((id, Box::new(display)));
+                        displays.push((id, Arc::new(Mutex::new(Box::new(display)))));
                     }
                     Err(e) => {
                         tracing::debug!("Apple HID display {} failed probe, skipping: {}", id, e);
@@ -128,7 +126,7 @@ impl BrightnessSyncDaemon {
         );
 
         Ok(Some(Self {
-            displays: Arc::new(Mutex::new(displays)),
+            displays,
             config_handler,
         }))
     }
@@ -191,9 +189,12 @@ impl BrightnessSyncDaemon {
                 };
 
                 let slider_value = percentage as f32 / 100.0;
-                let mut displays = self.displays.lock().await;
+
+                // Apply brightness to all displays in parallel
+                let mut tasks = Vec::new();
                 let mut synced_count = 0;
-                for (id, display) in displays.iter_mut() {
+
+                for (id, display) in &self.displays {
                     if config.is_sync_enabled(id) {
                         // Apply gamma correction for this monitor
                         let gamma = config.get_gamma_map(id);
@@ -205,18 +206,34 @@ impl BrightnessSyncDaemon {
                             gamma_corrected = min_brightness;
                         }
 
-                        if let Err(e) = display.set_brightness(gamma_corrected) {
-                            tracing::error!("Failed to set brightness on display {}: {}", id, e);
-                        } else {
-                            synced_count += 1;
-                            tracing::debug!("Set brightness to {}% (gamma-corrected from {}%, min {}) on display {} (sync enabled)", gamma_corrected, percentage, min_brightness, id);
-                        }
+                        // Clone what we need for the async task
+                        let id_clone = id.clone();
+                        let display_clone = display.clone();
+
+                        // Spawn blocking task for each display to set brightness in parallel
+                        let task = tokio::task::spawn_blocking(move || {
+                            let mut display_guard = display_clone.lock().unwrap();
+                            if let Err(e) = display_guard.set_brightness(gamma_corrected) {
+                                tracing::error!("Failed to set brightness on display {}: {}", id_clone, e);
+                            } else {
+                                tracing::debug!("Set brightness to {}% (gamma-corrected from {}%, min {}) on display {} (sync enabled)", gamma_corrected, percentage, min_brightness, id_clone);
+                            }
+                        });
+
+                        tasks.push(task);
+                        synced_count += 1;
                     } else {
                         tracing::debug!("Skipping brightness sync for display {} (sync disabled)", id);
                     }
                 }
-                if synced_count > 0 {
-                    tracing::debug!("Synced brightness on {} display(s) with gamma correction", synced_count);
+
+                // Wait for all brightness changes to complete in parallel
+                if !tasks.is_empty() {
+                    for task in tasks {
+                        let _ = task.await;
+                    }
+
+                    tracing::debug!("Synced brightness on {} display(s) in parallel with gamma correction", synced_count);
 
                     // Small delay to allow DDC monitors to process the brightness change
                     // This prevents UI flicker from race conditions when reading back brightness
