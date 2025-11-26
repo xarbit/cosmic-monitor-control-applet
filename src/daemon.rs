@@ -236,7 +236,14 @@ impl BrightnessSyncDaemon {
 
                         // Skip if brightness hasn't changed
                         if last_value == Some(gamma_corrected) {
-                            tracing::debug!("Skipping display {} - brightness unchanged at {}%", id, gamma_corrected);
+                            // Log if we're at a boundary
+                            if gamma_corrected == 0 {
+                                tracing::info!("Display {} at minimum brightness (0%)", id);
+                            } else if gamma_corrected == 100 {
+                                tracing::info!("Display {} at maximum brightness (100%)", id);
+                            } else {
+                                tracing::debug!("Skipping display {} - brightness unchanged at {}%", id, gamma_corrected);
+                            }
                             continue;
                         }
 
@@ -244,7 +251,11 @@ impl BrightnessSyncDaemon {
                         if let Some(last) = last_value {
                             if (gamma_corrected == 0 && last == 0 && gamma_corrected <= last) ||
                                (gamma_corrected == 100 && last == 100 && gamma_corrected >= last) {
-                                tracing::debug!("Skipping display {} - already at boundary {}%", id, gamma_corrected);
+                                if gamma_corrected == 0 {
+                                    tracing::info!("Display {} at minimum brightness (0%)", id);
+                                } else {
+                                    tracing::info!("Display {} at maximum brightness (100%)", id);
+                                }
                                 continue;
                             }
                         }
