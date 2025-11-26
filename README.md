@@ -184,6 +184,8 @@ RUST_LOG=info cosmic-monitor-control-applet 2>&1 | grep daemon
 
 **Maintained by**: [@xarbit](https://github.com/xarbit) (Jason Scurtu)
 
+**Contributors**: Claude <noreply@anthropic.com>
+
 **Based on**: [cosmic-ext-applet-external-monitor-brightness](https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness) from [COSMIC Utils](https://github.com/cosmic-utils)
 - Originally created by [@maciekk64](https://github.com/maciekk64)
 - Contributors: [@wiiznokes](https://github.com/wiiznokes), [@BrunoWallner](https://github.com/BrunoWallner), [@therealmate](https://github.com/therealmate), [@bittin](https://github.com/bittin), [@Gr3q](https://github.com/Gr3q), [@gCattt](https://github.com/gCattt), [@feikedonia](https://github.com/feikedonia)
