@@ -11,7 +11,7 @@ apple-hid-displays = ["dep:hidapi"]
 brightness-sync-daemon = ["dep:zbus", "dep:futures"]
 
 [dependencies]
-ddc-hi = "0.4"
+ddc-hi = "0.4.1"
 hidapi = { version = "2.6", optional = true }
 i18n-embed = { version = "0.16", features = [
     "fluent-system",
