@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! Brightness synchronization daemon
 //!
-//! This daemon listens to COSMIC's DisplayBrightness changes (F1/F2 keys) and
+//! This daemon listens to COSMIC's DisplayBrightness changes (keyboard brightness keys) and
 //! applies them to external displays based on per-monitor sync configuration.
 //!
 //! Supports:
@@ -82,7 +82,7 @@ impl BrightnessSyncDaemon {
         let config_handler = CosmicConfig::new(APPID, CONFIG_VERSION)
             .map_err(|e| AppError::Config(format!("Failed to create config handler: {}", e)))?;
 
-        tracing::info!("Loaded config for per-monitor F1/F2 sync settings");
+        tracing::info!("Loaded config for per-monitor keyboard brightness sync settings");
 
         tracing::info!(
             "Found {} external display(s) in DisplayManager, enabling brightness sync daemon with per-monitor control",

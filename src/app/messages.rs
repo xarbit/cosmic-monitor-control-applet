@@ -20,7 +20,7 @@ pub enum AppMsg {
     ToggleMinMaxBrightness(DisplayId),
     ToggleMonSettings(DisplayId),
     SetMonGammaMap(DisplayId, f32),
-    SetMonitorSyncEnabled(DisplayId, bool),  // Per-monitor F1/F2 sync toggle
+    SetMonitorSyncEnabled(DisplayId, bool),  // Per-monitor keyboard brightness sync toggle
     SetMonMinBrightness(DisplayId, u16),  // Per-monitor minimum brightness (0-100)
 
     /// Send from the subscription

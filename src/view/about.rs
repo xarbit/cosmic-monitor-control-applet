@@ -80,12 +80,15 @@ impl AppState {
                                         .push(text("Based on").size(13))
                                 )
                                 .push(text("cosmic-ext-applet-external-monitor-brightness").size(12))
-                                .push(text("by maciekk64").size(11))
+                                .push(text("from COSMIC Utils").size(11))
                                 .push(
                                     button::link("https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness")
                                         .on_press(AppMsg::OpenUrl("https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness".to_string()))
                                         .padding(0)
                                 )
+                                .push(Space::with_height(space_xxs))
+                                .push(text("Originally created by maciekk64").size(10))
+                                .push(text("Contributors: wiiznokes, BrunoWallner, therealmate, and others").size(10))
                                 .push(Space::with_height(space_xxs))
                                 .push(
                                     row()

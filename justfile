@@ -1,8 +1,8 @@
 rootdir := ''
 prefix := '/usr'
 debug := '0'
-name := 'cosmic-ext-applet-external-monitor-brightness'
-appid := 'io.github.cosmic_utils.' + name
+name := 'cosmic-monitor-control-applet'
+appid := 'io.github.xarbit.CosmicMonitorControlApplet'
 cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
 bin-src := cargo-target-dir / if debug == '1' { 'debug' / name } else { 'release' / name }
 base-dir := absolute_path(clean(rootdir / prefix))
@@ -62,7 +62,7 @@ metainfo-check:
 ################### Flatpak
 
 runf:
-    RUST_LOG="warn,cosmic_ext_applet_external_monitor_brightness=debug" flatpak run {{ appid }}
+    RUST_LOG="warn,cosmic_monitor_control_applet=debug" flatpak run {{ appid }}
 
 uninstallf:
     flatpak uninstall {{ appid }} -y || true

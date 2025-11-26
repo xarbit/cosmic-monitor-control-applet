@@ -1080,7 +1080,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmic-ext-applet-external-monitor-brightness"
+name = "cosmic-freedesktop-icons"
+version = "0.4.0"
+source = "git+https://github.com/pop-os/freedesktop-icons#44edef967337dfacdb1b997a6b1b4c641c1b6e18"
+dependencies = [
+ "dirs",
+ "ini_core",
+ "memmap2 0.9.9",
+ "thiserror 2.0.17",
+ "tracing",
+ "xdg",
+]
+
+[[package]]
+name = "cosmic-monitor-control-applet"
 version = "0.2.1"
 dependencies = [
  "anyhow",
@@ -1106,19 +1119,6 @@ dependencies = [
  "udev 0.8.0",
  "url",
  "zbus 5.12.0",
-]
-
-[[package]]
-name = "cosmic-freedesktop-icons"
-version = "0.4.0"
-source = "git+https://github.com/pop-os/freedesktop-icons#44edef967337dfacdb1b997a6b1b4c641c1b6e18"
-dependencies = [
- "dirs",
- "ini_core",
- "memmap2 0.9.9",
- "thiserror 2.0.17",
- "tracing",
- "xdg",
 ]
 
 [[package]]

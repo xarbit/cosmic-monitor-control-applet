@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! UI synchronization for F1/F2 brightness changes
+//! UI synchronization for keyboard brightness changes
 //!
 //! This module subscribes to COSMIC's DisplayBrightness changes to update
-//! the UI sliders when F1/F2 keys are pressed. The actual brightness application
+//! the UI sliders when keyboard brightness keys are pressed. The actual brightness application
 //! is handled by the daemon - this only refreshes the UI to reflect current values.
 
 #[cfg(feature = "brightness-sync-daemon")]
@@ -83,7 +83,7 @@ async fn subscribe_to_brightness_changes(
 
     while let Some(change) = brightness_changed.next().await {
         if let Ok(mut brightness) = change.get().await {
-            debug!("COSMIC brightness changed (F1/F2 keys), debouncing...");
+            debug!("COSMIC brightness changed (keyboard brightness keys), debouncing...");
 
             // Wait briefly and drain any rapid changes
             tokio::time::sleep(debounce_duration).await;

@@ -44,7 +44,7 @@ pub struct Config {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MonitorConfig {
     pub gamma_map: f32,
-    /// Whether this monitor should respond to F1/F2 brightness keys
+    /// Whether this monitor should respond to keyboard brightness keys
     #[serde(default = "default_sync_enabled")]
     pub sync_with_brightness_keys: bool,
     /// Minimum brightness percentage (0-100) that will be sent to hardware

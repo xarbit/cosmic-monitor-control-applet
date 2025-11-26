@@ -77,7 +77,7 @@ impl<'a> BrightnessCalculator<'a> {
     ///
     /// # Returns
     ///
-    /// `true` if F1/F2 brightness sync is enabled for this display
+    /// `true` if keyboard brightness sync is enabled for this display
     pub fn is_sync_enabled(&self, display_id: &str) -> bool {
         self.config.is_sync_enabled(display_id)
     }

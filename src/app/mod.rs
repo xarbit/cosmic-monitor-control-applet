@@ -17,7 +17,7 @@ use cosmic::Element;
 
 use crate::config;
 
-pub const APPID: &str = "io.github.cosmic_utils.cosmic-ext-applet-external-monitor-brightness";
+pub const APPID: &str = "io.github.xarbit.CosmicMonitorControlApplet";
 
 impl cosmic::Application for AppState {
     type Executor = cosmic::SingleThreadExecutor;
