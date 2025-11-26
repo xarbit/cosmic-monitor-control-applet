@@ -31,7 +31,11 @@ jobs:
 
       - name: Create source tarball
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="0.2.1"
+          fi
           git archive --format=tar.gz --prefix=cosmic-monitor-control-applet-${VERSION}/ HEAD > ~/rpmbuild/SOURCES/cosmic-monitor-control-applet-${VERSION}.tar.gz
 
       - name: Build RPM
@@ -111,7 +115,7 @@ jobs:
       - name: Install dependencies
         run: |
           zypper refresh
-          zypper install -y rpm-build rust cargo gcc libi2c-devel hidapi-devel systemd-devel libudev-devel git tar gzip
+          zypper install -y rpm-build rust cargo gcc libi2c0-devel libhidapi-devel systemd-devel libudev-devel git tar gzip
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -122,7 +126,11 @@ jobs:
 
       - name: Create source tarball
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="0.2.1"
+          fi
           tar czf ~/rpmbuild/SOURCES/cosmic-monitor-control-applet-${VERSION}.tar.gz \
             --exclude=.git \
             --exclude=target \

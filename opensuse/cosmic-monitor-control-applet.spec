@@ -9,13 +9,13 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  rust >= 1.80
 BuildRequires:  cargo
 BuildRequires:  gcc
-BuildRequires:  libi2c-devel
-BuildRequires:  hidapi-devel
+BuildRequires:  libi2c0-devel
+BuildRequires:  libhidapi-devel
 BuildRequires:  systemd-devel
 BuildRequires:  pkgconfig(libudev)
 
 Requires:       i2c-tools
-Requires:       hidapi
+Requires:       libhidapi0
 
 %description
 A COSMIC desktop applet for controlling external monitor brightness via DDC/CI
