@@ -55,14 +55,39 @@ pub async fn enumerate_displays(
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
 
-                let brightness = match backend.get_brightness() {
-                    Ok(v) => v,
-                    // on my machine, i get this error when starting the session
-                    // can't get_vcp_feature: DDC/CI error: Expected DDC/CI length bit
-                    // This go away after the third attempt
-                    Err(e) => {
-                        error!("can't get_vcp_feature: {e}");
-                        return Err(e);
+                // Retry logic for DDC/CI length bit errors
+                // Some monitors return "Expected DDC/CI length bit" error on first attempts
+                // but work correctly after 2-3 retries
+                let brightness = {
+                    let mut last_error = None;
+                    let mut brightness_value = None;
+
+                    for attempt in 1..=3 {
+                        match backend.get_brightness() {
+                            Ok(v) => {
+                                if attempt > 1 {
+                                    info!("DDC/CI display succeeded on attempt {}", attempt);
+                                }
+                                brightness_value = Some(v);
+                                break;
+                            }
+                            Err(e) => {
+                                debug!("DDC/CI attempt {} failed: {}", attempt, e);
+                                last_error = Some(e);
+                                if attempt < 3 {
+                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                }
+                            }
+                        }
+                    }
+
+                    match brightness_value {
+                        Some(v) => v,
+                        None => {
+                            let err = last_error.unwrap();
+                            error!("can't get_vcp_feature after 3 attempts: {}", err);
+                            return Err(err);
+                        }
                     }
                 };
                 debug_assert!(brightness <= 100);

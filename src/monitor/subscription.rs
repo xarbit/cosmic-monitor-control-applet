@@ -119,16 +119,33 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                     match last {
                         EventToSub::Refresh => {
                             for (id, display) in displays {
-                                let res = display
-                                    .lock()
-                                    .unwrap()
-                                    .get_brightness();
+                                let display_clone = display.clone();
+                                let id_clone = id.clone();
+
+                                // Read brightness in spawn_blocking with retry logic
+                                let res = tokio::task::spawn_blocking(move || {
+                                    let mut display_guard = display_clone.lock().unwrap();
+
+                                    // Retry once if first attempt fails (DDC/CI may be busy)
+                                    match display_guard.get_brightness() {
+                                        Ok(v) => Ok(v),
+                                        Err(e) => {
+                                            // DDC/CI may still be processing previous command
+                                            // Wait longer to ensure it's ready
+                                            std::thread::sleep(std::time::Duration::from_millis(100));
+                                            match display_guard.get_brightness() {
+                                                Ok(v) => Ok(v),
+                                                Err(e2) => Err(e2)
+                                            }
+                                        }
+                                    }
+                                }).await.unwrap();
 
                                 match res {
                                     Ok(value) => {
                                         output
                                             .send(AppMsg::BrightnessWasUpdated(
-                                                id.clone(),
+                                                id_clone,
                                                 value,
                                             ))
                                             .await

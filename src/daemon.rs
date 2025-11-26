@@ -68,14 +68,30 @@ impl BrightnessSyncDaemon {
             let id = display.id();
 
             // Test if display responds to brightness commands
-            match display.get_brightness() {
-                Ok(_) => {
-                    tracing::info!("DDC/CI display {} is working, adding to daemon", id);
-                    displays.push((id, Arc::new(Mutex::new(Box::new(display)))));
+            // Retry up to 3 times to handle "Expected DDC/CI length bit" errors
+            let mut succeeded = false;
+            for attempt in 1..=3 {
+                match display.get_brightness() {
+                    Ok(_) => {
+                        if attempt > 1 {
+                            tracing::info!("DDC/CI display {} succeeded on attempt {}", id, attempt);
+                        }
+                        tracing::info!("DDC/CI display {} is working, adding to daemon", id);
+                        displays.push((id.clone(), Arc::new(Mutex::new(Box::new(display)))));
+                        succeeded = true;
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::debug!("DDC/CI display {} attempt {} failed: {}", id, attempt, e);
+                        if attempt < 3 {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::debug!("DDC/CI display {} failed probe, skipping: {}", id, e);
-                }
+            }
+
+            if !succeeded {
+                tracing::debug!("DDC/CI display {} failed after 3 attempts, skipping", id);
             }
         }
 
@@ -263,6 +279,9 @@ impl BrightnessSyncDaemon {
                         // Update last brightness
                         last_brightness_map.insert(id.clone(), gamma_corrected);
 
+                        tracing::debug!("Sending brightness command to {} ({}% -> {}%)",
+                            id, last_value.unwrap_or(0), gamma_corrected);
+
                         // Clone what we need for the async task
                         let id_clone = id.clone();
                         let display_clone = display.clone();
@@ -271,11 +290,28 @@ impl BrightnessSyncDaemon {
                         let task = tokio::task::spawn_blocking(move || {
                             let start = std::time::Instant::now();
                             let mut display_guard = display_clone.lock().unwrap();
-                            if let Err(e) = display_guard.set_brightness(gamma_corrected) {
-                                tracing::error!("Failed to set brightness on display {}: {}", id_clone, e);
-                            } else {
-                                let elapsed = start.elapsed();
-                                tracing::info!("Set {} to {}% in {:?}", id_clone, gamma_corrected, elapsed);
+
+                            // Retry once if first attempt fails
+                            // DDC/CI protocol requires 40ms between commands, so we add 50ms delay before retry
+                            match display_guard.set_brightness(gamma_corrected) {
+                                Ok(_) => {
+                                    let elapsed = start.elapsed();
+                                    tracing::info!("Set {} to {}% in {:?}", id_clone, gamma_corrected, elapsed);
+                                }
+                                Err(e) => {
+                                    tracing::debug!("Display {} first attempt failed: {}, waiting 50ms before retry", id_clone, e);
+                                    // DDC/CI spec requires 40ms between commands, use 50ms to be safe
+                                    std::thread::sleep(std::time::Duration::from_millis(50));
+                                    match display_guard.set_brightness(gamma_corrected) {
+                                        Ok(_) => {
+                                            let elapsed = start.elapsed();
+                                            tracing::info!("Set {} to {}% in {:?} (succeeded on retry)", id_clone, gamma_corrected, elapsed);
+                                        }
+                                        Err(e2) => {
+                                            tracing::error!("Failed to set brightness on display {}: {}", id_clone, e2);
+                                        }
+                                    }
+                                }
                             }
                         });
 
@@ -297,9 +333,10 @@ impl BrightnessSyncDaemon {
 
                     tracing::debug!("Synced brightness on {} display(s) in parallel", synced_count);
 
-                    // Small delay to allow DDC monitors to process the brightness change
-                    // This prevents UI flicker from race conditions when reading back brightness
-                    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+                    // Delay to allow DDC monitors to process the brightness change
+                    // DDC/CI takes ~125ms for set_brightness + 40ms protocol delay = ~165ms minimum
+                    // Using 200ms to be safe and prevent UI read errors
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 }
             }
         }

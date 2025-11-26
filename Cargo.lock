@@ -1045,6 +1045,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-journald",
+ "tracing-log",
  "tracing-subscriber",
  "udev 0.8.0",
  "zbus 5.9.0",

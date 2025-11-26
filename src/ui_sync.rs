@@ -57,17 +57,38 @@ async fn subscribe_to_brightness_changes(
 
     debug!("Listening for COSMIC brightness-key changes to update UI sliders...");
 
+    // Debounce to avoid excessive refreshes
+    let debounce_duration = tokio::time::Duration::from_millis(50);
+
     while let Some(change) = brightness_changed.next().await {
         if let Ok(_brightness) = change.get().await {
-            debug!("COSMIC brightness changed, waiting for DDC to settle...");
+            debug!("COSMIC brightness changed (F1/F2 keys), debouncing...");
 
-            // Wait for DDC monitors to process brightness changes before refreshing UI
-            // This prevents race conditions where we read stale values
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            // Wait briefly and drain any rapid changes
+            tokio::time::sleep(debounce_duration).await;
+            loop {
+                match tokio::time::timeout(
+                    tokio::time::Duration::from_millis(5),
+                    brightness_changed.next()
+                ).await {
+                    Ok(Some(newer_change)) => {
+                        if let Ok(_) = newer_change.get().await {
+                            debug!("Skipping intermediate brightness change");
+                        }
+                    }
+                    _ => break,
+                }
+            }
 
-            debug!("Refreshing UI with settled brightness values...");
+            debug!("Waiting for daemon to finish setting brightness...");
 
-            // Send refresh message to update the UI sliders with current hardware values
+            // Wait for daemon to complete brightness change (daemon waits 200ms + DDC time ~125ms = ~325ms)
+            // Add extra buffer for safety
+            tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+
+            debug!("Refreshing UI with current brightness values");
+
+            // Now safe to refresh UI from hardware
             if output.send(AppMsg::Refresh).await.is_err() {
                 break;
             }
