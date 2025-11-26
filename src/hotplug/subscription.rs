@@ -113,13 +113,14 @@ pub fn hotplug_subscription() -> impl Stream<Item = AppMsg> {
 
         // Async task receives notifications from blocking thread
         let mut last_hotplug_time = std::time::Instant::now();
-        let mut _is_processing = false;
+        #[allow(unused_assignments)]
+        let mut is_processing = false;
 
         while rx.recv().await.is_some() {
             info!("Hotplug event received, debouncing...");
 
             // If already processing a hotplug, queue this event and wait
-            if _is_processing {
+            if is_processing {
                 warn!("Hotplug re-enumeration already in progress, queueing this event...");
                 // Drain all immediate events and wait for next one
                 while rx.try_recv().is_ok() {}
@@ -127,7 +128,7 @@ pub fn hotplug_subscription() -> impl Stream<Item = AppMsg> {
                 continue;
             }
 
-            _is_processing = true;
+            is_processing = true;
 
             // Debounce: drain all pending events
             let mut drained_count = 0;
@@ -163,7 +164,7 @@ pub fn hotplug_subscription() -> impl Stream<Item = AppMsg> {
                 error!("Failed to send hotplug message");
             }
 
-            _is_processing = false;
+            is_processing = false;
             info!("Hotplug processing complete, ready for next event");
         }
 
