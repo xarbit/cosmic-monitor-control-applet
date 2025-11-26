@@ -54,13 +54,18 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential debhelper cargo rustc libi2c-dev libhidapi-dev libudev-dev pkg-config git
+          apt-get install -y build-essential debhelper libi2c-dev libhidapi-dev libudev-dev pkg-config git curl
+
+          # Install Rust via rustup for newer version
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . "$HOME/.cargo/env"
 
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build DEB
         run: |
+          . "$HOME/.cargo/env"
           dpkg-buildpackage -us -uc -b
 
       - name: Upload DEB

@@ -3,8 +3,6 @@ Section: utils
 Priority: optional
 Maintainer: Jason Scurtu <github@mail.scurtu.me>
 Build-Depends: debhelper-compat (= 13),
-               cargo,
-               rustc (>= 1.80),
                libi2c-dev,
                libhidapi-dev,
                libudev-dev,
