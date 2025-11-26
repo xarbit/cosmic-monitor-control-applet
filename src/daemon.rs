@@ -62,24 +62,44 @@ impl BrightnessSyncDaemon {
     pub async fn new() -> Result<Option<Self>> {
         let mut displays: Vec<(String, Box<dyn DisplayProtocol>)> = Vec::new();
 
-        // Enumerate DDC/CI displays
+        // Enumerate DDC/CI displays and test them
         let ddc_displays = DdcCiDisplay::enumerate();
-        tracing::info!("Found {} DDC/CI display(s)", ddc_displays.len());
-        for display in ddc_displays {
+        tracing::info!("Found {} DDC/CI display(s) to probe", ddc_displays.len());
+        for mut display in ddc_displays {
             let id = display.id();
-            displays.push((id, Box::new(display)));
+
+            // Test if display responds to brightness commands
+            match display.get_brightness() {
+                Ok(_) => {
+                    tracing::info!("DDC/CI display {} is working, adding to daemon", id);
+                    displays.push((id, Box::new(display)));
+                }
+                Err(e) => {
+                    tracing::debug!("DDC/CI display {} failed probe, skipping: {}", id, e);
+                }
+            }
         }
 
-        // Enumerate Apple HID displays if the feature is enabled
+        // Enumerate Apple HID displays if the feature is enabled and test them
         #[cfg(feature = "apple-hid-displays")]
         {
             let api = hidapi::HidApi::new().context("Failed to initialize HID API")?;
             let apple_displays = AppleHidDisplay::enumerate(&api)
                 .context("Failed to enumerate Apple HID displays")?;
-            tracing::info!("Found {} Apple HID display(s)", apple_displays.len());
-            for display in apple_displays {
+            tracing::info!("Found {} Apple HID display(s) to probe", apple_displays.len());
+            for mut display in apple_displays {
                 let id = display.id();
-                displays.push((id, Box::new(display)));
+
+                // Test if display responds to brightness commands
+                match display.get_brightness() {
+                    Ok(_) => {
+                        tracing::info!("Apple HID display {} is working, adding to daemon", id);
+                        displays.push((id, Box::new(display)));
+                    }
+                    Err(e) => {
+                        tracing::debug!("Apple HID display {} failed probe, skipping: {}", id, e);
+                    }
+                }
             }
         }
 
