@@ -16,6 +16,10 @@ BuildRequires:  libi2c-devel
 BuildRequires:  hidapi-devel
 BuildRequires:  systemd-devel
 BuildRequires:  pkgconfig(libudev)
+BuildRequires:  pkgconfig(xkbcommon)
+BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(egl)
+BuildRequires:  pkg-config
 
 Requires:       i2c-tools
 Requires:       hidapi
