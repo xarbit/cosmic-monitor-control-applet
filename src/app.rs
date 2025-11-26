@@ -125,6 +125,8 @@ impl AppState {
                     .min_height(200.0)
                     .max_height(500.0);
 
+                popup_settings.positioner.size = Some((350, 300));
+
                 // Don't trigger re-enumeration on popup open - makes it feel slow
                 // User can click refresh button if needed for hotplug detection
                 get_popup(popup_settings)
@@ -254,7 +256,7 @@ impl cosmic::Application for AppState {
     }
 
     fn on_close_requested(&self, id: window::Id) -> Option<AppMsg> {
-        info!("on_close_requested");
+        debug!("on_close_requested");
 
         if let Some(popup) = &self.popup {
             if popup.id == id {
