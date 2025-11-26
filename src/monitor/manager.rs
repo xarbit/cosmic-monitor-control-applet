@@ -42,22 +42,38 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use once_cell::sync::Lazy;
 
 use super::backend::{DisplayBackend, DisplayId};
+
+/// Global singleton instance of the display manager
+///
+/// This ensures that all applet instances (even across multiple panels) share
+/// the same display backends, preventing I2C conflicts when multiple applet
+/// instances try to access the same displays simultaneously.
+static GLOBAL_DISPLAY_MANAGER: Lazy<Arc<RwLock<HashMap<DisplayId, Arc<tokio::sync::Mutex<DisplayBackend>>>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// Shared display manager instance
 ///
 /// This manages all display backends and ensures only one I2C connection
 /// per physical monitor. Both UI and daemon access displays through this.
+///
+/// All instances of DisplayManager share the same underlying storage via
+/// a global singleton, preventing conflicts when multiple applet instances
+/// exist (e.g., one per panel in a multi-monitor setup).
 pub struct DisplayManager {
     displays: Arc<RwLock<HashMap<DisplayId, Arc<tokio::sync::Mutex<DisplayBackend>>>>>,
 }
 
 impl DisplayManager {
-    /// Create a new display manager
+    /// Create a new display manager reference
+    ///
+    /// All instances share the same global singleton storage, ensuring
+    /// that multiple applet instances don't conflict with each other.
     pub fn new() -> Self {
         Self {
-            displays: Arc::new(RwLock::new(HashMap::new())),
+            displays: GLOBAL_DISPLAY_MANAGER.clone(),
         }
     }
 

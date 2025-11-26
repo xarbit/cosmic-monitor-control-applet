@@ -1052,6 +1052,7 @@ dependencies = [
  "i18n-embed-fl",
  "libc",
  "libcosmic",
+ "once_cell",
  "rust-embed",
  "serde",
  "thiserror 2.0.17",

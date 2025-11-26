@@ -87,7 +87,14 @@ pub async fn enumerate_displays(
                         Some(v) => v,
                         None => {
                             let err = last_error.unwrap();
-                            error!("can't get_vcp_feature after 5 attempts: {}", err);
+                            let id = backend.id();
+                            let name = backend.name();
+                            error!(
+                                display_id = %id,
+                                display_name = %name,
+                                error = ?err,
+                                "Failed to get brightness after 5 attempts - monitor may not support DDC/CI"
+                            );
                             return Err(err);
                         }
                     }
@@ -96,6 +103,15 @@ pub async fn enumerate_displays(
 
                 let id = backend.id();
                 let name = backend.name();
+
+                // Warn if monitor reports 0% brightness (common issue with some portable monitors)
+                if brightness == 0 {
+                    warn!(
+                        display_id = %id,
+                        display_name = %name,
+                        "Monitor reports 0% brightness - this may indicate DDC/CI communication issues or unsupported monitor"
+                    );
+                }
 
                 let mon = MonitorInfo {
                     name,

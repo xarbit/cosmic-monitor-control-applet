@@ -38,6 +38,7 @@ Change brightness of external monitors via DDC/CI protocol. Native support for A
 - System libraries:
   - `i2c-dev` headers (for DDC/CI support)
   - `hidapi` development files (for Apple HID display support)
+  - `libudev` development files (for device detection)
 
 #### Runtime Dependencies
 - **For DDC/CI displays** (standard external monitors):
@@ -52,7 +53,7 @@ Change brightness of external monitors via DDC/CI protocol. Native support for A
 **Fedora/RHEL:**
 ```bash
 # Build dependencies
-sudo dnf install rust cargo i2c-tools-devel hidapi-devel
+sudo dnf install rust cargo i2c-tools-devel hidapi-devel systemd-devel
 
 # Runtime dependencies
 sudo dnf install i2c-tools hidapi ddcutil
@@ -61,7 +62,7 @@ sudo dnf install i2c-tools hidapi ddcutil
 **Debian/Ubuntu:**
 ```bash
 # Build dependencies
-sudo apt install cargo libi2c-dev libhidapi-dev
+sudo apt install cargo libi2c-dev libhidapi-dev libudev-dev
 
 # Runtime dependencies
 sudo apt install i2c-tools libhidapi-libusb0 ddcutil
@@ -70,7 +71,7 @@ sudo apt install i2c-tools libhidapi-libusb0 ddcutil
 **Arch Linux:**
 ```bash
 # Build dependencies
-sudo pacman -S rust i2c-tools hidapi
+sudo pacman -S rust i2c-tools hidapi systemd
 
 # Runtime dependencies (same as build)
 sudo pacman -S i2c-tools hidapi ddcutil
