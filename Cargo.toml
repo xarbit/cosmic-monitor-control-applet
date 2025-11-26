@@ -30,12 +30,12 @@ anyhow = "1"
 thiserror = "2"
 udev = "0.8"
 libc = "0.2"
-zbus = { version = "5", optional = true }
+zbus = { version = "5.11", optional = true }
 futures = { version = "0.3", optional = true }
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
-# rev = "a85b3693994ef2b8275eca6a9eccc86a2d7e9f86"
+# Using latest commit from main branch
 default-features = false
 features = ["applet", "tokio", "wayland"]
 
