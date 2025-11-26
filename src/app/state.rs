@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::{Config, MonitorConfig};
 use crate::monitor::{DisplayId, EventToSub, MonitorInfo};
+use crate::permissions::PermissionCheckResult;
 use cosmic::app::{Core, Task};
 use cosmic::cosmic_config::Config as CosmicConfig;
 use tokio::sync::watch::Sender;
@@ -52,10 +53,38 @@ pub struct AppState {
     pub config: Config,
     pub(super) config_handler: CosmicConfig,
     pub(super) last_quit: Option<(u128, PopupKind)>,
+    pub permission_status: Option<PermissionCheckResult>,
+    pub show_permission_view: bool,
 }
 
 impl AppState {
     pub fn new(core: Core, config_handler: CosmicConfig, config: Config) -> Self {
+        // Check permissions on startup
+        let permission_status = crate::permissions::check_i2c_permissions();
+
+        // Log permission status
+        debug!("Permission check results:");
+        for req in &permission_status.requirements {
+            let icon = match req.status {
+                crate::permissions::RequirementStatus::Met => "✓",
+                crate::permissions::RequirementStatus::NotMet => "✗",
+                crate::permissions::RequirementStatus::NotApplicable => "-",
+                crate::permissions::RequirementStatus::Partial => "ⓘ",
+            };
+            debug!("  {} {}: {}", icon, req.name, req.description);
+        }
+
+        if permission_status.has_issues() {
+            warn!("Hardware permission issues detected:");
+            for req in &permission_status.requirements {
+                if req.status == crate::permissions::RequirementStatus::NotMet {
+                    warn!("  ✗ {}: {}", req.name, req.description);
+                }
+            }
+        } else {
+            info!("{}", permission_status.summary());
+        }
+
         AppState {
             core,
             config_handler,
@@ -65,6 +94,8 @@ impl AppState {
             theme_mode_config: cosmic::cosmic_theme::ThemeMode::default(),
             sender: None,
             last_quit: None,
+            permission_status: Some(permission_status),
+            show_permission_view: false,
         }
     }
 
@@ -130,6 +161,9 @@ impl AppState {
         for mon in self.monitors.values_mut() {
             mon.settings_expanded = false;
         }
+
+        // Reset permission view when closing popup
+        self.show_permission_view = false;
 
         if let Some(popup) = self.popup.take() {
             self.last_quit = Some((now(), popup.kind));

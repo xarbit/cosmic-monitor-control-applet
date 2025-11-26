@@ -103,6 +103,9 @@ impl AppState {
                 info!("RefreshMonitors message received, triggering re-enumeration");
                 self.send(EventToSub::ReEnumerate);
             }
+            AppMsg::TogglePermissionView => {
+                self.show_permission_view = !self.show_permission_view;
+            }
             AppMsg::Noop => {
                 // No operation - used for daemon spawn task completion
             }

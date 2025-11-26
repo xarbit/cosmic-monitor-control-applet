@@ -28,6 +28,7 @@ pub enum AppMsg {
     BrightnessWasUpdated(DisplayId, u16),
     Refresh,
     RefreshMonitors,
+    TogglePermissionView,
     /// No operation message (for daemon spawn task)
     Noop,
 }

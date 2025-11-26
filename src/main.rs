@@ -19,6 +19,7 @@ mod hotplug;
 mod icon;
 mod localize;
 mod monitor;
+mod permissions;
 mod protocols;
 mod view;
 
