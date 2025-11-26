@@ -1,6 +1,6 @@
 [package]
 name = "cosmic-ext-applet-external-monitor-brightness"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness"
@@ -33,6 +33,9 @@ udev = "0.8"
 libc = "0.2"
 zbus = { version = "5.11", optional = true }
 futures = { version = "0.3", optional = true }
+open = "5"
+ashpd = "0.9"
+url = "2"
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"

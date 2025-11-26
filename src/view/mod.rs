@@ -7,3 +7,4 @@ mod monitor_item;
 mod popup;
 mod permissions_warning;
 mod profiles;
+mod about;

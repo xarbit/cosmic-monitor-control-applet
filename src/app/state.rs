@@ -55,6 +55,7 @@ pub struct AppState {
     pub(super) last_quit: Option<(u128, PopupKind)>,
     pub permission_status: Option<PermissionCheckResult>,
     pub show_permission_view: bool,
+    pub show_about_view: bool,
     pub display_manager: DisplayManager,
     // Profile UI state
     pub profile_dialog_open: bool,
@@ -102,6 +103,7 @@ impl AppState {
             last_quit: None,
             permission_status: Some(permission_status),
             show_permission_view: false,
+            show_about_view: false,
             display_manager: DisplayManager::new(),
             profile_dialog_open: false,
             profile_name_input: String::new(),
@@ -173,8 +175,9 @@ impl AppState {
             mon.settings_expanded = false;
         }
 
-        // Reset permission view when closing popup
+        // Reset permission view and about view when closing popup
         self.show_permission_view = false;
+        self.show_about_view = false;
 
         if let Some(popup) = self.popup.take() {
             self.last_quit = Some((now(), popup.kind));

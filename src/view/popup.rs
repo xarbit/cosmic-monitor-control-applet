@@ -12,6 +12,7 @@ use super::permissions_warning::permissions_warning_view;
 impl AppState {
     pub fn popup_view(&self) -> Element<'_, AppMsg> {
         let cosmic_theme::Spacing {
+            space_xxs,
             space_s,
             space_m,
             space_l,
@@ -31,6 +32,15 @@ impl AppState {
                         .push(horizontal_space())
                         .push(
                             tooltip(
+                                button::icon(icon::from_name("help-about-symbolic"))
+                                    .on_press(AppMsg::ToggleAboutView),
+                                text(fl!("about")),
+                                tooltip::Position::Bottom,
+                            )
+                        )
+                        .push(Space::with_width(space_xxs))
+                        .push(
+                            tooltip(
                                 button::icon(icon::from_name("view-refresh-symbolic"))
                                     .on_press(AppMsg::RefreshMonitors),
                                 text(fl!("refresh_monitors")),
@@ -43,6 +53,11 @@ impl AppState {
 
         // Content area
         let mut content = column().padding(space_s);
+
+        // If user toggled to about view, show it
+        if self.show_about_view {
+            return self.about_view();
+        }
 
         // If user toggled to permission view, show it
         if self.show_permission_view {

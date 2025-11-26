@@ -108,6 +108,37 @@ impl AppState {
             AppMsg::TogglePermissionView => {
                 self.show_permission_view = !self.show_permission_view;
             }
+            AppMsg::ToggleAboutView => {
+                self.show_about_view = !self.show_about_view;
+            }
+            AppMsg::OpenUrl(url) => {
+                // Try portal first (for Flatpak), fallback to open crate
+                let url_clone = url.clone();
+                tokio::spawn(async move {
+                    // Try using XDG portal (works in Flatpak)
+                    if let Ok(url_parsed) = url::Url::parse(&url_clone) {
+                        match ashpd::desktop::open_uri::OpenFileRequest::default()
+                            .send_uri(&url_parsed)
+                            .await
+                        {
+                            Ok(_) => {
+                                info!("Opened URL via portal: {}", url_clone);
+                                return;
+                            }
+                            Err(e) => {
+                                debug!("Portal failed ({}), falling back to open crate", e);
+                            }
+                        }
+                    }
+
+                    // Fallback to open crate for non-sandboxed environments
+                    if let Err(e) = open::that(&url_clone) {
+                        error!("Failed to open URL {}: {}", url_clone, e);
+                    } else {
+                        info!("Opened URL via open crate: {}", url_clone);
+                    }
+                });
+            }
             AppMsg::ToggleProfilesSection => {
                 self.profiles_expanded = !self.profiles_expanded;
             }

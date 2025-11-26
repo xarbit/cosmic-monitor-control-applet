@@ -30,6 +30,8 @@ pub enum AppMsg {
     Refresh,
     RefreshMonitors,
     TogglePermissionView,
+    ToggleAboutView,
+    OpenUrl(String),
 
     // Profile management
     ToggleProfilesSection,  // Toggle profiles section expanded/collapsed

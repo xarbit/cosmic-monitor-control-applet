@@ -13,6 +13,7 @@ brightness = Brightness
 brightness_curve = Brightness Curve
 sync_brightness_keys = Listen to brightness keys
 minimum_brightness = Minimum Brightness
+about = About
 
 # Brightness profiles
 profiles = Brightness Profiles
