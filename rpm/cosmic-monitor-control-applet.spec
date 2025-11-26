@@ -9,13 +9,15 @@ Source0:        https://github.com/xarbit/%{name}/archive/v%{version}/%{name}-%{
 
 ExclusiveArch:  %{rust_arches}
 
-BuildRequires:  rust-packaging >= 21
-BuildRequires:  just
-BuildRequires:  systemd-rpm-macros
+BuildRequires:  rust >= 1.80
+BuildRequires:  cargo
+BuildRequires:  gcc
+BuildRequires:  libi2c-devel
+BuildRequires:  hidapi-devel
+BuildRequires:  systemd-devel
+BuildRequires:  pkgconfig(libudev)
 
-# Runtime dependencies
-Requires:       cosmic-desktop
-Requires:       ddc-hi
+Requires:       i2c-tools
 Requires:       hidapi
 
 %description
@@ -28,47 +30,18 @@ Control external monitors using:
 - Quick toggle for system dark mode
 
 %prep
-%autosetup -n %{name}-%{version}
-# Prepare Cargo vendor directory
-%cargo_prep
-
-%generate_buildrequires
-%cargo_generate_buildrequires
+%setup -q
 
 %build
-%cargo_build
-just build-release
+cargo build --release --all-features
 
 %install
-# Install binary and desktop files
-just install rootdir=%{buildroot} prefix=%{_prefix}
-
-# Install udev rules for Apple HID displays
-install -Dm0644 data/udev/99-apple-displays.rules \
-    %{buildroot}%{_udevrulesdir}/99-apple-displays.rules
-
-%check
-%cargo_test
-
-%post
-%systemd_post %{name}.service
-%udev_rules_update
-
-%preun
-%systemd_preun %{name}.service
-
-%postun
-%systemd_postun_with_restart %{name}.service
-%udev_rules_update
+install -Dm755 target/release/%{name} %{buildroot}%{_bindir}/%{name}
 
 %files
 %license LICENSE
-%doc README.md
+%doc README.md CLAUDE.md
 %{_bindir}/%{name}
-%{_datadir}/applications/io.github.xarbit.CosmicMonitorControlApplet.desktop
-%{_datadir}/icons/hicolor/scalable/apps/io.github.xarbit.CosmicMonitorControlApplet-symbolic.svg
-%{_datadir}/metainfo/io.github.xarbit.CosmicMonitorControlApplet.metainfo.xml
-%{_udevrulesdir}/99-apple-displays.rules
 
 %changelog
 * Tue Nov 26 2024 Jason Scurtu <github@mail.scurtu.me> - 0.2.1-1
