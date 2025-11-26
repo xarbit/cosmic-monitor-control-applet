@@ -1,18 +1,18 @@
 [Desktop Entry]
-Name=External Monitor Brightness
+Name=External Monitor Control
 Name[fr]=Luminosité de moniteur externe
 Name[hu]=Külső Monitor Fényerőszabályzó
 
-Comment=Change brightness of external monitors via DDC/CI protocol
+Comment=Control external monitor brightness via DDC/CI and Apple HID protocols
 Comment[fr]=Modifier la luminosité des moniteurs externes via le protocole DDC/CI
 Comment[hu]=Külső monitorok fényerejének szabályozása a DDC/CI protokollon keresztül
 
 Type=Application
-Exec=cosmic-ext-applet-external-monitor-brightness
+Exec=cosmic-monitor-control-applet
 Terminal=false
 Categories=Cosmic;Iced;
 Keywords=Cosmic;Iced;
-Icon=io.github.cosmic_utils.cosmic-ext-applet-external-monitor-brightness-symbolic
+Icon=io.github.xarbit.CosmicMonitorControlApplet-symbolic
 StartupNotify=true
 NoDisplay=true
 X-CosmicApplet=true

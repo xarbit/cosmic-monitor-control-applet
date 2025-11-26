@@ -8,18 +8,31 @@ use crate::localize::localize;
 extern crate tracing;
 
 mod app;
+mod brightness;
+#[cfg(feature = "brightness-sync-daemon")]
+mod daemon;
+#[cfg(feature = "brightness-sync-daemon")]
+mod ui_sync;
 mod config;
+#[cfg(feature = "apple-hid-displays")]
+mod devices;
+mod error;
+mod hotplug;
 mod icon;
 mod localize;
 mod monitor;
+mod permissions;
+mod protocols;
 mod view;
 
 fn setup_logs() {
     use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-    let fmt_layer = fmt::layer().with_target(false);
+    let fmt_layer = fmt::layer().with_target(true);  // Enable target to see where logs come from
+    // Filter out noisy DDC/CI errors from the ddc_hi library
+    // These transient errors are normal and handled by our retry logic
     let filter_layer = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new(format!(
-        "warn,{}=warn",
+        "error,{}=info",
         env!("CARGO_CRATE_NAME")
     )));
 
@@ -35,6 +48,10 @@ fn setup_logs() {
             .with(fmt_layer)
             .init();
     }
+
+    // Bridge log crate to tracing AFTER tracing is initialized
+    // This allows us to filter ddc_hi library logs
+    tracing_log::LogTracer::init().ok();
 }
 
 fn main() -> cosmic::iced::Result {

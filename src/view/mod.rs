@@ -1,0 +1,10 @@
+mod common;
+mod applet_button;
+mod quick_settings;
+mod empty_state;
+mod dark_mode;
+mod monitor_item;
+mod popup;
+mod permissions_warning;
+mod profiles;
+mod about;

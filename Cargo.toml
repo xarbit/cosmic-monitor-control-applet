@@ -1,12 +1,18 @@
 [package]
-name = "cosmic-ext-applet-external-monitor-brightness"
-version = "0.1.0"
+name = "cosmic-monitor-control-applet"
+version = "0.2.1"
 edition = "2024"
 license = "GPL-3.0-only"
-repository = "https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness"
+repository = "https://github.com/xarbit/cosmic-monitor-control-applet"
+
+[features]
+default = ["apple-hid-displays", "brightness-sync-daemon"]
+apple-hid-displays = ["dep:hidapi"]
+brightness-sync-daemon = ["dep:zbus", "dep:futures"]
 
 [dependencies]
-ddc-hi = "0.4"
+ddc-hi = "0.4.1"
+hidapi = { version = "2.6", optional = true }
 i18n-embed = { version = "0.16", features = [
     "fluent-system",
     "desktop-requester",
@@ -16,14 +22,24 @@ rust-embed = { version = "8", features = ["debug-embed"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 tracing-journald = "0.3"
-tokio = { version = "1", features = ["sync"] }
+tracing-log = "0.2"
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros", "net"] }
 serde = "1"
 dirs = "6"
 anyhow = "1"
+thiserror = "2"
+once_cell = "1"
+udev = "0.8"
+libc = "0.2"
+zbus = { version = "5.11", optional = true }
+futures = { version = "0.3", optional = true }
+open = "5"
+ashpd = "0.9"
+url = "2"
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
-# rev = "a85b3693994ef2b8275eca6a9eccc86a2d7e9f86"
+# Using latest commit from main branch
 default-features = false
 features = ["applet", "tokio", "wayland"]
 
