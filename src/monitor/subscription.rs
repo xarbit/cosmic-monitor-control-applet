@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -27,6 +27,8 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
     stream::channel(100, |mut output| async move {
         let mut state = State::Fetch(None); // Start immediately, no waiting
         let mut failed_attempts = 0;
+        // Cache of successfully initialized displays
+        let mut display_cache: HashMap<DisplayId, Arc<Mutex<DisplayBackend>>> = HashMap::new();
 
         loop {
             match &mut state {
@@ -36,7 +38,44 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                     state = State::Fetch(None);
                 }
                 State::Fetch(existing_sender) => {
-                    let (res, displays, some_failed) = enumerate_displays().await;
+                    // Build set of known display IDs from cache
+                    let known_ids: HashSet<DisplayId> = display_cache.keys().cloned().collect();
+                    let is_re_enumerate = !display_cache.is_empty();
+
+                    info!("Enumerating displays (cached: {}, re-enumerate: {})", display_cache.len(), is_re_enumerate);
+                    let (mut res, new_displays, some_failed) = enumerate_displays(&known_ids).await;
+
+                    // Merge: Add all newly enumerated displays to results
+                    let mut all_displays = new_displays;
+
+                    // Add cached displays back to results and all_displays
+                    // Get current brightness for all cached displays
+                    for (id, backend) in &display_cache {
+                        // Get current brightness from cached backend
+                        // This is fast since we skip the initialization/wake-up sequence
+                        let (keep, name, brightness) = {
+                            let mut guard = backend.lock().unwrap();
+                            match guard.get_brightness() {
+                                Ok(b) => (true, guard.name(), b),
+                                Err(_) => (false, String::new(), 0),
+                            }
+                        };
+
+                        if keep {
+                            res.insert(id.clone(), super::backend::MonitorInfo { name, brightness });
+                            all_displays.insert(id.clone(), backend.clone());
+                            if is_re_enumerate {
+                                info!("Using cached display (quick read): {} (brightness: {})", id, brightness);
+                            } else {
+                                info!("Kept cached display: {} (brightness: {})", id, brightness);
+                            }
+                        } else {
+                            info!("Removed stale cached display: {}", id);
+                        }
+                    }
+
+                    // Update cache with all working displays (cached + new)
+                    display_cache = all_displays.clone();
 
                     if some_failed {
                         failed_attempts += 1;
@@ -71,7 +110,7 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                     // Reset failed_attempts after successful enumeration
                     failed_attempts = 0;
 
-                    state = State::Ready(displays, tx, rx);
+                    state = State::Ready(all_displays, tx, rx);
                 }
                 State::Ready(displays, tx, rx) => {
                     rx.changed().await.unwrap();
@@ -117,9 +156,12 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
                         EventToSub::ReEnumerate => {
+                            // Update cache with current displays before re-enumerating
+                            display_cache = displays.clone();
+
                             // Transition back to Fetch state with existing sender
-                            // This will re-enumerate displays while keeping the same channel
-                            info!("ReEnumerate event received, re-enumerating displays");
+                            // The display_cache will be used to avoid re-probing known displays
+                            info!("ReEnumerate event received, re-enumerating (cache has {} displays)", display_cache.len());
                             state = State::Fetch(Some(tx.clone()));
                         }
                     }

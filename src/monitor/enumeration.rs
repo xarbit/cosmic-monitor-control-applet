@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::protocols::ddc_ci::DdcCiDisplay;
+use crate::protocols::DisplayProtocol;
 
 #[cfg(feature = "apple-hid-displays")]
 use crate::protocols::apple_hid::AppleHidDisplay;
@@ -10,7 +11,11 @@ use super::backend::{DisplayBackend, DisplayId, MonitorInfo};
 
 /// Enumerate all available displays (DDC/CI and Apple HID)
 /// Returns a map of display IDs to MonitorInfo and their backends
-pub async fn enumerate_displays() -> (
+///
+/// `known_ids`: Set of display IDs that are already cached and should be skipped
+pub async fn enumerate_displays(
+    known_ids: &std::collections::HashSet<DisplayId>,
+) -> (
     HashMap<DisplayId, MonitorInfo>,
     HashMap<DisplayId, Arc<Mutex<DisplayBackend>>>,
     bool,
@@ -19,14 +24,24 @@ pub async fn enumerate_displays() -> (
     let mut displays = HashMap::new();
     let mut some_failed = false;
 
-    info!("=== START ENUMERATE ===");
+    info!("=== START ENUMERATE (known displays: {}) ===", known_ids.len());
 
     // Enumerate DDC/CI displays concurrently
     let ddc_displays = DdcCiDisplay::enumerate();
-    info!("Found {} DDC/CI display(s) to probe", ddc_displays.len());
+    info!("Found {} DDC/CI display(s) total", ddc_displays.len());
     let mut ddc_tasks = Vec::new();
 
     for display in ddc_displays {
+        // Get display ID before moving it
+        let id = display.id();
+
+        // Skip displays that are already in cache
+        if known_ids.contains(&id) {
+            info!("Skipping cached DDC/CI display: {}", id);
+            continue;
+        }
+
+        info!("Probing new DDC/CI display: {}", id);
         let task = tokio::spawn(async move {
             // Run blocking I/O operations in spawn_blocking to avoid blocking the runtime
             tokio::task::spawn_blocking(move || {
@@ -88,8 +103,11 @@ pub async fn enumerate_displays() -> (
     // Enumerate Apple HID displays
     #[cfg(feature = "apple-hid-displays")]
     {
+        // Clone known_ids for use in spawn_blocking
+        let known_ids_clone = known_ids.clone();
+
         // Run Apple HID enumeration in spawn_blocking to avoid blocking the runtime
-        let apple_result = tokio::task::spawn_blocking(|| {
+        let apple_result = tokio::task::spawn_blocking(move || {
             let mut results = Vec::new();
             match hidapi::HidApi::new() {
                 Ok(api) => {
@@ -97,6 +115,15 @@ pub async fn enumerate_displays() -> (
                         Ok(apple_displays) => {
                             for display in apple_displays {
                                 let mut backend = DisplayBackend::AppleHid(display);
+                                let id = backend.id();
+
+                                // Skip displays that are already in cache
+                                if known_ids_clone.contains(&id) {
+                                    info!("Skipping cached Apple HID display: {}", id);
+                                    continue;
+                                }
+
+                                info!("Probing new Apple HID display: {}", id);
 
                                 let brightness = match backend.get_brightness() {
                                     Ok(v) => v,
@@ -106,7 +133,6 @@ pub async fn enumerate_displays() -> (
                                     }
                                 };
 
-                                let id = backend.id();
                                 let name = backend.name();
 
                                 let mon = MonitorInfo {
