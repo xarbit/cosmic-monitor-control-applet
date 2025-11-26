@@ -9,7 +9,7 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  rust >= 1.80
 BuildRequires:  cargo
 BuildRequires:  gcc
-BuildRequires:  i2c-tools-devel
+BuildRequires:  libi2c-devel
 BuildRequires:  hidapi-devel
 BuildRequires:  systemd-devel
 BuildRequires:  pkgconfig(libudev)
