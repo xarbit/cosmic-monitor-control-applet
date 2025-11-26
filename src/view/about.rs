@@ -33,7 +33,7 @@ impl AppState {
                             .push(
                                 column()
                                     .spacing(space_xxs)
-                                    .push(text("External Monitor Brightness").size(20))
+                                    .push(text("External Monitor Control").size(20))
                                     .push(text(format!("Version {}", env!("CARGO_PKG_VERSION"))).size(14))
                                     .push(Space::with_height(space_xxs))
                                     .push(text("Control external monitor brightness via DDC/CI and Apple HID protocols").size(11))
