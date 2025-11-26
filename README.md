@@ -4,7 +4,25 @@ Control external monitor brightness via DDC/CI and Apple HID protocols. Native s
 
 > **Note**: This is a fork of [cosmic-ext-applet-external-monitor-brightness](https://github.com/cosmic-utils/cosmic-ext-applet-external-monitor-brightness) from the [COSMIC Utils](https://github.com/cosmic-utils) project, originally created by [@maciekk64](https://github.com/maciekk64), with significant enhancements and new features.
 
-<img src="res/screenshot3.png" width="600" alt="Screenshot">
+## Screenshots
+
+<p align="center">
+  <img src="res/screenshot1.png" width="600" alt="Main applet view with brightness controls">
+  <br>
+  <em>Main applet view with brightness controls and profiles</em>
+</p>
+
+<p align="center">
+  <img src="res/screenshot2.png" width="600" alt="Brightness profiles">
+  <br>
+  <em>Brightness profiles for saving and restoring settings</em>
+</p>
+
+<p align="center">
+  <img src="res/screenshot3.png" width="600" alt="Permission management view">
+  <br>
+  <em>Permission management view for I2C and HID access</em>
+</p>
 
 ## Key Enhancements Over Original
 
