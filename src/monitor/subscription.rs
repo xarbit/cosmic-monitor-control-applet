@@ -28,7 +28,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
         let mut failed_attempts = 0;
         // Cache of successfully initialized displays (now managed by DisplayManager)
         let mut display_cache: HashMap<DisplayId, std::sync::Arc<tokio::sync::Mutex<DisplayBackend>>> = HashMap::new();
-        let mut is_enumerating = false; // Track if enumeration is in progress
+        let mut _is_enumerating = false; // Track if enumeration is in progress
 
         loop {
             match &mut state {
@@ -38,7 +38,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     state = State::Fetch(None);
                 }
                 State::Fetch(existing_sender) => {
-                    is_enumerating = true;
+                    _is_enumerating = true;
 
                     // Build set of known display IDs from cache
                     let known_ids: HashSet<DisplayId> = display_cache.keys().cloned().collect();
@@ -53,7 +53,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     // Enumerate with error recovery
                     let (mut res, new_displays, some_failed) = enumerate_displays(&known_ids).await;
 
-                    is_enumerating = false;
+                    _is_enumerating = false;
 
                     // Safety check: During re-enumeration, if we find NO new displays,
                     // we still need to verify cached displays are working before keeping them
@@ -64,7 +64,6 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     // Add cached displays back to results and all_displays
                     // Get current brightness for all cached displays with timeout
                     for (id, backend) in &display_cache {
-                        let id_clone = id.clone();
                         let backend_clone = backend.clone();
 
                         // Check if display is still alive with a timeout
