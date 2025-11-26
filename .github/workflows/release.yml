@@ -1,0 +1,200 @@
+name: Build and Release Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-rpm:
+    name: Build RPM Package (Fedora ${{ matrix.fedora }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        fedora: [42, 43]
+    container:
+      image: fedora:${{ matrix.fedora }}
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y rpm-build rpmdevtools rust cargo gcc i2c-tools-devel hidapi-devel systemd-devel git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup RPM build tree
+        run: rpmdev-setuptree
+
+      - name: Create source tarball
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          git archive --format=tar.gz --prefix=cosmic-monitor-control-applet-${VERSION}/ HEAD > ~/rpmbuild/SOURCES/cosmic-monitor-control-applet-${VERSION}.tar.gz
+
+      - name: Build RPM
+        run: |
+          cd rpm
+          rpmbuild -bb cosmic-monitor-control-applet.spec
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package-fc${{ matrix.fedora }}
+          path: ~/rpmbuild/RPMS/*/*.rpm
+
+  build-deb:
+    name: Build DEB Package (Ubuntu 24.04)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential debhelper cargo rustc libi2c-dev libhidapi-dev libudev-dev pkg-config git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build DEB
+        run: |
+          dpkg-buildpackage -us -uc -b
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: ../*.deb
+
+  build-arch:
+    name: Build Arch Package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm base-devel rust git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build package
+        run: |
+          # Create a non-root user for makepkg
+          useradd -m builder
+          chown -R builder:builder .
+
+          # Build as non-root
+          su builder -c "makepkg -s --noconfirm"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: "*.pkg.tar.zst"
+
+  build-opensuse:
+    name: Build openSUSE RPM (Tumbleweed)
+    runs-on: ubuntu-latest
+    container:
+      image: opensuse/tumbleweed:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          zypper refresh
+          zypper install -y rpm-build rust cargo gcc i2c-tools-devel hidapi-devel systemd-devel libudev-devel git tar gzip
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup RPM build tree
+        run: |
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+      - name: Create source tarball
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          tar czf ~/rpmbuild/SOURCES/cosmic-monitor-control-applet-${VERSION}.tar.gz \
+            --exclude=.git \
+            --exclude=target \
+            --transform "s,^,cosmic-monitor-control-applet-${VERSION}/," \
+            .
+
+      - name: Build RPM
+        run: |
+          cd opensuse
+          rpmbuild -bb cosmic-monitor-control-applet.spec
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensuse-package
+          path: ~/rpmbuild/RPMS/*/*.rpm
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-rpm, build-deb, build-arch, build-opensuse]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/rpm-package-fc42/*.rpm
+            artifacts/rpm-package-fc43/*.rpm
+            artifacts/opensuse-package/*.rpm
+            artifacts/deb-package/*.deb
+            artifacts/arch-package/*.pkg.tar.zst
+          body: |
+            Control external monitors (DDC/CI and Apple displays) from COSMIC Desktop.
+
+            Supports standard DDC/CI monitors and native Apple displays (Studio Display, Pro Display XDR) and LG UltraFine displays via USB HID.
+
+            ## Installation
+
+            ### Fedora 42/43
+            ```bash
+            # Download the appropriate .fc42 or .fc43 RPM for your Fedora version
+            sudo rpm -i cosmic-monitor-control-applet-*.fc42.rpm  # For Fedora 42
+            # or
+            sudo rpm -i cosmic-monitor-control-applet-*.fc43.rpm  # For Fedora 43
+            ```
+
+            ### openSUSE Tumbleweed
+            ```bash
+            sudo zypper install cosmic-monitor-control-applet-*.rpm
+            ```
+
+            ### Cosmic OS / Ubuntu 24.04 / Debian
+            ```bash
+            sudo dpkg -i cosmic-monitor-control-applet_*.deb
+            sudo apt-get install -f  # Install dependencies if needed
+            ```
+
+            ### Arch Linux
+            ```bash
+            sudo pacman -U cosmic-monitor-control-applet-*.pkg.tar.zst
+            ```
+
+            ## Changes
+            See the [changelog](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for details.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

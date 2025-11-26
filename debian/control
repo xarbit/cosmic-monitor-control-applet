@@ -1,0 +1,36 @@
+Source: cosmic-monitor-control-applet
+Section: utils
+Priority: optional
+Maintainer: Jason Scurtu <github@mail.scurtu.me>
+Build-Depends: debhelper-compat (= 13),
+               cargo,
+               rustc (>= 1.80),
+               libi2c-dev,
+               libhidapi-dev,
+               libudev-dev,
+               pkg-config
+Standards-Version: 4.6.2
+Homepage: https://github.com/xarbit/cosmic-monitor-control-applet
+Vcs-Browser: https://github.com/xarbit/cosmic-monitor-control-applet
+Vcs-Git: https://github.com/xarbit/cosmic-monitor-control-applet.git
+Rules-Requires-Root: no
+
+Package: cosmic-monitor-control-applet
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         i2c-tools,
+         libhidapi-libusb0
+Recommends: cosmic-panel
+Description: Control external monitors (DDC/CI and Apple displays) for COSMIC Desktop
+ A COSMIC desktop applet for controlling external monitor brightness via
+ DDC/CI and Apple HID protocols.
+ .
+ Features:
+  - Control brightness of external monitors from the COSMIC panel
+  - DDC/CI protocol support (most modern monitors)
+  - Native Apple display support via USB HID
+  - Automatic brightness sync with keyboard brightness keys
+  - Brightness profiles for multiple monitors
+  - Gamma curve adjustment per monitor
+  - Automatic hotplug detection
