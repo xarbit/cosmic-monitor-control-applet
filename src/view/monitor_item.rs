@@ -6,19 +6,26 @@ use cosmic::widget::{
     button, column, container, horizontal_space, icon, mouse_area, row, slider, text, toggler,
     tooltip,
 };
+use cosmic::{cosmic_theme, theme};
 
 use super::common::brightness_icon;
 
 impl AppState {
     /// View for a list of all monitors
     pub fn monitors_view(&self) -> Option<Element<'_, AppMsg>> {
+        let cosmic_theme::Spacing {
+            space_xs,
+            space_s,
+            ..
+        } = theme::spacing();
+
         (!self.monitors.is_empty()).then(|| {
             let mut monitors: Vec<_> = self.monitors.iter().collect();
             monitors.sort_by_key(|(id, _)| *id);
 
             column()
-                .padding(8)
-                .spacing(12)
+                .padding(space_xs)
+                .spacing(space_s)
                 .extend(
                     monitors
                         .into_iter()
@@ -30,11 +37,19 @@ impl AppState {
 
     /// View for a single monitor with brightness slider and settings
     pub fn monitor_view<'a>(&self, id: &'a str, monitor: &'a MonitorState) -> Element<'a, AppMsg> {
+        let cosmic_theme::Spacing {
+            space_xxxs,
+            space_xxs,
+            space_xs,
+            space_s,
+            ..
+        } = theme::spacing();
+
         let gamma_map = self.config.get_gamma_map(id);
 
         row()
-            .padding(2.0)
-            .spacing(12.0)
+            .padding(space_xxxs)
+            .spacing(space_s)
             .push(
                 container(
                     mouse_area(
@@ -65,15 +80,15 @@ impl AppState {
             )
             .push(
                 column()
-                    .spacing(8.0)
-                    .padding(4.0)
+                    .spacing(space_xs)
+                    .padding(space_xxs)
                     .push(
                         row()
-                            .spacing(8.0)
+                            .spacing(space_xs)
                             .align_y(Alignment::Center)
                             .push(
                                 column()
-                                    .spacing(2.0)
+                                    .spacing(space_xxxs)
                                     .push(
                                         text(&monitor.name)
                                             .size(12)
@@ -87,13 +102,13 @@ impl AppState {
                             .push(horizontal_space())
                             .push(
                                 button::icon(icon::from_name("emblem-system-symbolic"))
-                                    .padding(4)
+                                    .padding(space_xxs)
                                     .on_press(AppMsg::ToggleMonSettings(id.to_string()))
                             )
                     )
                     .push(
                         row()
-                            .spacing(12)
+                            .spacing(space_s)
                             .align_y(Alignment::Center)
                             .push(slider(
                                 0..=100,
@@ -125,14 +140,21 @@ fn monitor_settings_view<'a>(
     id: &'a str,
     gamma_map: f32,
 ) -> Element<'a, AppMsg> {
+    let cosmic_theme::Spacing {
+        space_xxxs,
+        space_xs,
+        space_s,
+        ..
+    } = theme::spacing();
+
     let min_brightness = app_state.config.get_min_brightness(id);
 
     container(
         column()
-            .spacing(8)
+            .spacing(space_xs)
             .push(
             row()
-                .spacing(12)
+                .spacing(space_s)
                 .align_y(Alignment::Center)
                 .push(
                     icon::from_name("preferences-desktop-display-symbolic")
@@ -143,7 +165,7 @@ fn monitor_settings_view<'a>(
                 .push(horizontal_space())
                 .push(
                     button::text("-")
-                        .padding([2, 8])
+                        .padding([space_xxxs, space_xs])
                         .on_press(AppMsg::SetMonGammaMap(
                             id.to_string(),
                             (gamma_map - 0.1).max(0.3)
@@ -156,7 +178,7 @@ fn monitor_settings_view<'a>(
                 )
                 .push(
                     button::text("+")
-                        .padding([2, 8])
+                        .padding([space_xxxs, space_xs])
                         .on_press(AppMsg::SetMonGammaMap(
                             id.to_string(),
                             (gamma_map + 0.1).min(3.0)
@@ -165,7 +187,7 @@ fn monitor_settings_view<'a>(
         )
         .push(
             row()
-                .spacing(12)
+                .spacing(space_s)
                 .align_y(Alignment::Center)
                 .push(
                     icon::from_name("display-brightness-symbolic")
@@ -189,7 +211,7 @@ fn monitor_settings_view<'a>(
         )
         .push(
             row()
-                .spacing(12)
+                .spacing(space_s)
                 .align_y(Alignment::Center)
                 .push(
                     icon::from_name("input-keyboard-symbolic")

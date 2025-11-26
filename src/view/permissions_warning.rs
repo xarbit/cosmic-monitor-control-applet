@@ -4,10 +4,20 @@ use crate::permissions::{PermissionCheckResult, RequirementStatus};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{column, container, icon, row, text};
+use cosmic::{cosmic_theme, theme};
 
 /// Permissions warning view showing detailed requirements with checkmarks/X marks
 pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, AppMsg> {
-    let mut requirements_column = column().spacing(8);
+    let cosmic_theme::Spacing {
+        space_xxxs,
+        space_xs,
+        space_s,
+        space_m,
+        space_l,
+        ..
+    } = theme::spacing();
+
+    let mut requirements_column = column().spacing(space_xs);
 
     for req in result.requirements.clone() {
         let status_icon = match req.status {
@@ -19,7 +29,7 @@ pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, A
 
         requirements_column = requirements_column.push(
             row()
-                .spacing(12)
+                .spacing(space_s)
                 .align_y(Alignment::Center)
                 .push(
                     icon::from_name(status_icon)
@@ -28,7 +38,7 @@ pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, A
                 )
                 .push(
                     column()
-                        .spacing(2)
+                        .spacing(space_xxxs)
                         .push(
                             text(req.name)
                                 .size(13)
@@ -43,11 +53,11 @@ pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, A
 
     container(
         column()
-            .spacing(16)
+            .spacing(space_m)
             .align_x(Alignment::Start)
             .push(
                 row()
-                    .spacing(12)
+                    .spacing(space_s)
                     .align_y(Alignment::Center)
                     .push(
                         icon::from_name(if result.has_issues() {
@@ -60,7 +70,7 @@ pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, A
                     )
                     .push(
                         column()
-                            .spacing(4)
+                            .spacing(space_xxxs)
                             .push(
                                 text(if result.has_issues() {
                                     fl!("permission_warning_title")
@@ -82,6 +92,6 @@ pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, A
             )
     )
     .width(Length::Fill)
-    .padding([20, 20])
+    .padding([space_l, space_l])
     .into()
 }

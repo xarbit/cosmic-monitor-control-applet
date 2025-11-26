@@ -4,22 +4,30 @@ use cosmic::Element;
 use cosmic::applet::padded_control;
 use cosmic::iced::Alignment;
 use cosmic::widget::{button, column, divider, horizontal_space, icon, row, text, tooltip, Space};
+use cosmic::{cosmic_theme, theme};
 
 use super::empty_state::empty_state_view;
 use super::permissions_warning::permissions_warning_view;
 
 impl AppState {
     pub fn popup_view(&self) -> Element<'_, AppMsg> {
+        let cosmic_theme::Spacing {
+            space_s,
+            space_m,
+            space_l,
+            ..
+        } = theme::spacing();
+
         let mut col = column().spacing(0);
 
         // Top bar with rescan button in top-right corner (only in normal view)
         if !self.show_permission_view {
             col = col
-                .push(Space::with_height(16))
+                .push(Space::with_height(space_m))
                 .push(
                     row()
                         .align_y(Alignment::Center)
-                        .push(Space::with_width(20))
+                        .push(Space::with_width(space_l))
                         .push(horizontal_space())
                         .push(
                             tooltip(
@@ -29,12 +37,12 @@ impl AppState {
                                 tooltip::Position::Bottom,
                             )
                         )
-                        .push(Space::with_width(20))
+                        .push(Space::with_width(space_l))
                 );
         }
 
         // Content area
-        let mut content = column().padding(10);
+        let mut content = column().padding(space_s);
 
         // If user toggled to permission view, show it
         if self.show_permission_view {

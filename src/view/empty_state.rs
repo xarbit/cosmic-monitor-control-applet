@@ -3,12 +3,20 @@ use crate::fl;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{column, container, icon, text};
+use cosmic::{cosmic_theme, theme};
 
 /// Empty state view shown when no displays are connected
 pub fn empty_state_view() -> Element<'static, AppMsg> {
+    let cosmic_theme::Spacing {
+        space_s,
+        space_l,
+        space_xxl,
+        ..
+    } = theme::spacing();
+
     container(
         column()
-            .spacing(12)
+            .spacing(space_s)
             .align_x(Alignment::Center)
             .push(
                 icon::from_name("video-display-symbolic")
@@ -26,6 +34,6 @@ pub fn empty_state_view() -> Element<'static, AppMsg> {
     )
     .width(Length::Fill)
     .center_x(Length::Fill)
-    .padding([40, 20])
+    .padding([space_xxl, space_l])
     .into()
 }
