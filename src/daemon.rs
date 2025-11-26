@@ -355,19 +355,60 @@ impl BrightnessSyncDaemon {
 }
 
 /// Spawn the brightness sync daemon if external displays are detected
+/// Uses a lock file to ensure only one daemon runs across all applet instances
 #[cfg(feature = "brightness-sync-daemon")]
 pub async fn spawn_if_needed(display_manager: crate::monitor::DisplayManager) {
+    use std::fs::File;
+    use std::os::unix::io::AsRawFd;
+
+    // Try to acquire exclusive lock on daemon lock file
+    // This ensures only one daemon runs even if multiple applet instances exist
+    let lock_path = dirs::runtime_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+        .join("cosmic-monitor-control-daemon.lock");
+
+    let lock_file = match File::create(&lock_path) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::error!("Failed to create daemon lock file: {}", e);
+            return;
+        }
+    };
+
+    // Try to acquire exclusive lock (non-blocking)
+    let lock_result = unsafe {
+        let mut flock = libc::flock {
+            l_type: libc::F_WRLCK as i16,
+            l_whence: libc::SEEK_SET as i16,
+            l_start: 0,
+            l_len: 0,
+            l_pid: 0,
+        };
+        libc::fcntl(lock_file.as_raw_fd(), libc::F_SETLK, &mut flock)
+    };
+
+    if lock_result != 0 {
+        tracing::info!("Brightness sync daemon already running in another applet instance, skipping");
+        return;
+    }
+
+    tracing::info!("Acquired daemon lock, this instance will run the brightness sync daemon");
+
     match BrightnessSyncDaemon::new(display_manager).await {
         Ok(Some(daemon)) => {
             // Spawn daemon in background
+            // Keep lock_file alive for the duration of the daemon
             tokio::spawn(async move {
+                let _lock_guard = lock_file; // Keep lock alive
                 if let Err(e) = daemon.run().await {
                     tracing::error!("Brightness sync daemon error: {}", e);
                 }
+                // Lock is automatically released when lock_file is dropped
             });
         }
         Ok(None) => {
             // No external displays, daemon not needed
+            tracing::info!("No external displays, brightness sync daemon not needed");
         }
         Err(e) => {
             tracing::error!("Failed to initialize brightness sync daemon: {}", e);

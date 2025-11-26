@@ -104,10 +104,14 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                         (tx, rx)
                     };
 
-                    output
+                    if let Err(e) = output
                         .send(AppMsg::SubscriptionReady((res, tx.clone())))
                         .await
-                        .unwrap();
+                    {
+                        error!("Failed to send SubscriptionReady: {:?}", e);
+                        // Channel closed, exit subscription
+                        return;
+                    }
 
                     // Reset failed_attempts after successful enumeration
                     failed_attempts = 0;
@@ -115,7 +119,11 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     state = State::Ready(tx, rx);
                 }
                 State::Ready(tx, rx) => {
-                    rx.changed().await.unwrap();
+                    if let Err(e) = rx.changed().await {
+                        error!("Monitor subscription channel closed: {:?}", e);
+                        // Channel closed, exit subscription
+                        return;
+                    }
 
                     let last = rx.borrow_and_update().clone();
                     match last {
@@ -150,17 +158,28 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                             }
                                         }
                                     }
-                                }).await.unwrap();
+                                }).await;
+
+                                let res = match res {
+                                    Ok(r) => r,
+                                    Err(e) => {
+                                        error!("spawn_blocking join error: {:?}", e);
+                                        continue;
+                                    }
+                                };
 
                                 match res {
                                     Ok(value) => {
-                                        output
+                                        if let Err(e) = output
                                             .send(AppMsg::BrightnessWasUpdated(
-                                                id_clone,
+                                                id_clone.clone(),
                                                 value,
                                             ))
                                             .await
-                                            .unwrap();
+                                        {
+                                            error!("Failed to send BrightnessWasUpdated for {}: {:?}", id_clone, e);
+                                            return;
+                                        }
                                     }
                                     Err(err) => {
                                         error!(
@@ -212,7 +231,9 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                 }
                             });
 
-                            j.await.unwrap();
+                            if let Err(e) = j.await {
+                                error!("spawn_blocking join error for Set: {:?}", e);
+                            }
                             info!(">>> SUBSCRIPTION: Completed Set for {} = {}%", id, value);
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
@@ -258,7 +279,9 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                     }
                                 });
 
-                                j.await.unwrap();
+                                if let Err(e) = j.await {
+                                    error!("spawn_blocking join error for SetBatch: {:?}", e);
+                                }
                                 info!(">>> SUBSCRIPTION: Completed batch command for {} = {}%", id, value);
                                 tokio::time::sleep(Duration::from_millis(50)).await;
                             }

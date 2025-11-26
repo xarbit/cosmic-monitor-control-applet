@@ -14,7 +14,8 @@ impl AppState {
     pub fn update(&mut self, message: AppMsg) -> Task<AppMsg> {
         // Log ALL messages at info level for debugging
         match &message {
-            AppMsg::RefreshMonitors => info!(">>> UPDATE: AppMsg::RefreshMonitors"),
+            AppMsg::RefreshMonitors => info!(">>> UPDATE: AppMsg::RefreshMonitors (manual refresh button)"),
+            AppMsg::HotplugDetected => info!(">>> UPDATE: AppMsg::HotplugDetected (automatic hotplug)"),
             AppMsg::SubscriptionReady((monitors, _)) => info!(">>> UPDATE: AppMsg::SubscriptionReady with {} monitors", monitors.len()),
             _ => debug!("{:?}", message),
         }
@@ -97,13 +98,20 @@ impl AppState {
             }
             AppMsg::ConfigChanged(config) => self.config = config,
             AppMsg::Refresh => {
-                // Refresh brightness values from monitors
+                // Refresh brightness values from monitors (quick refresh)
                 self.send(EventToSub::Refresh);
             }
             AppMsg::RefreshMonitors => {
-                // Trigger full re-enumeration (clear cache for manual refresh)
-                info!("RefreshMonitors message received, triggering full re-enumeration (no cache)");
+                // Trigger full re-enumeration without cache (for manual refresh button)
+                // This clears the cache and does a complete re-scan of all displays
+                info!("RefreshMonitors message received (manual refresh), triggering full re-enumeration");
                 self.send(EventToSub::ReEnumerateFull);
+            }
+            AppMsg::HotplugDetected => {
+                // Trigger re-enumeration with cache (for hotplug events)
+                // This keeps working displays and only probes for new ones
+                info!("HotplugDetected message received, triggering cached re-enumeration");
+                self.send(EventToSub::ReEnumerate);
             }
             AppMsg::TogglePermissionView => {
                 self.show_permission_view = !self.show_permission_view;

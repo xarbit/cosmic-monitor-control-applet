@@ -11,11 +11,11 @@ pub struct UdevMonitor {
 impl UdevMonitor {
     /// Create a new udev monitor for display events
     ///
-    /// Monitors both drm (general display) and i2c-dev (DDC/CI) subsystems
+    /// Monitors DRM subsystem with device type filter for connectors
+    /// This significantly reduces false positives from other DRM events
     pub fn new() -> Result<Self, std::io::Error> {
         let socket = udev::MonitorBuilder::new()?
-            .match_subsystem("drm")?
-            .match_subsystem("i2c-dev")?
+            .match_subsystem_devtype("drm", "drm_minor")?
             .listen()?;
 
         Ok(Self { socket })
@@ -29,7 +29,7 @@ impl UdevMonitor {
     where
         F: FnMut(udev::Event) -> bool, // Returns true to continue, false to stop
     {
-        info!("Display hotplug monitoring started (monitoring drm + i2c-dev subsystems)");
+        info!("Display hotplug monitoring started (monitoring drm subsystem with device type filter)");
 
         let fd = self.socket.as_raw_fd();
 

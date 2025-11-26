@@ -29,6 +29,7 @@ pub enum AppMsg {
     BrightnessWasUpdated(DisplayId, u16),
     Refresh,
     RefreshMonitors,
+    HotplugDetected,  // Display hotplug event (use cached enumeration)
     TogglePermissionView,
     ToggleAboutView,
     OpenUrl(String),

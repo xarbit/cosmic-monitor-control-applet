@@ -55,14 +55,15 @@ pub fn hotplug_subscription() -> impl Stream<Item = AppMsg> {
                 // Drain the channel
             }
 
-            // Wait for hardware to fully initialize
+            // Wait for hardware AND Wayland/iced to fully stabilize
             // DDC/CI displays need time to become available after hotplug
-            tokio::time::sleep(Duration::from_millis(2000)).await;
+            // Wayland compositor also needs time to clean up display resources
+            tokio::time::sleep(Duration::from_millis(5000)).await;
 
-            // Trigger re-enumeration
-            info!("Hotplug settled, sending AppMsg::RefreshMonitors");
-            if output.send(AppMsg::RefreshMonitors).await.is_err() {
-                error!("Failed to send refresh message");
+            // Trigger re-enumeration with cache (keeps existing working displays)
+            info!("Hotplug settled, sending AppMsg::HotplugDetected");
+            if output.send(AppMsg::HotplugDetected).await.is_err() {
+                error!("Failed to send hotplug message");
             }
         }
 

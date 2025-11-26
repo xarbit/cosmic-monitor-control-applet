@@ -75,9 +75,8 @@ pub enum EventToSub {
     Set(DisplayId, ScreenBrightness),
     /// Set brightness for multiple displays atomically (won't be lost in watch channel)
     SetBatch(Vec<(DisplayId, ScreenBrightness)>),
-    /// Re-enumerate with cache (for hotplug events)
-    #[allow(dead_code)]
+    /// Re-enumerate with cache (for hotplug events - keeps existing displays)
     ReEnumerate,
-    /// Re-enumerate without cache (for manual refresh button)
+    /// Re-enumerate without cache (for manual refresh button - full re-scan)
     ReEnumerateFull,
 }
