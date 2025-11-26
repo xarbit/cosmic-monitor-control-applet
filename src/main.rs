@@ -15,6 +15,7 @@ mod ui_sync;
 mod config;
 #[cfg(feature = "apple-hid-displays")]
 mod devices;
+mod hotplug;
 mod icon;
 mod localize;
 mod monitor;

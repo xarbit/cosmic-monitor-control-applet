@@ -433,7 +433,7 @@ impl cosmic::Application for AppState {
                 .watch_config(THEME_MODE_ID)
                 .map(|u| AppMsg::ThemeModeConfigChanged(u.config)),
             Subscription::run(monitor::sub),
-            Subscription::run(monitor::hotplug_sub),
+            Subscription::run(crate::hotplug::hotplug_subscription),
             config::sub(),
         ];
 
