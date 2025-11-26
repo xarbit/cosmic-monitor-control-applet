@@ -26,6 +26,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Fix git ownership
+        run: git config --global --add safe.directory /__w/cosmic-monitor-control-applet/cosmic-monitor-control-applet
+
       - name: Setup RPM build tree
         run: rpmdev-setuptree
 
@@ -119,6 +122,9 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Fix git ownership
+        run: git config --global --add safe.directory /__w/cosmic-monitor-control-applet/cosmic-monitor-control-applet
 
       - name: Setup RPM build tree
         run: |
