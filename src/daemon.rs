@@ -49,7 +49,7 @@ trait CosmicSettingsDaemon {
 
 #[cfg(feature = "brightness-sync-daemon")]
 pub struct BrightnessSyncDaemon {
-    displays: Vec<(String, Arc<Mutex<Box<dyn DisplayProtocol>>>)>,  // (id, display) pairs wrapped for thread-safe access
+    display_manager: crate::monitor::DisplayManager,
     config_handler: CosmicConfig,
     last_brightness: Arc<tokio::sync::Mutex<std::collections::HashMap<String, u16>>>,  // Track last brightness per display
 }
@@ -58,70 +58,15 @@ pub struct BrightnessSyncDaemon {
 impl BrightnessSyncDaemon {
     /// Create a new brightness sync daemon
     /// Returns None if no external displays are detected
-    pub async fn new() -> Result<Option<Self>> {
-        let mut displays: Vec<(String, Arc<Mutex<Box<dyn DisplayProtocol>>>)> = Vec::new();
+    pub async fn new(display_manager: crate::monitor::DisplayManager) -> Result<Option<Self>> {
+        // Check if DisplayManager has any displays
+        let display_count = display_manager.count().await;
 
-        // Enumerate DDC/CI displays and test them
-        let ddc_displays = DdcCiDisplay::enumerate();
-        tracing::info!("Found {} DDC/CI display(s) to probe", ddc_displays.len());
-        for mut display in ddc_displays {
-            let id = display.id();
-
-            // Test if display responds to brightness commands
-            // Retry up to 3 times to handle "Expected DDC/CI length bit" errors
-            let mut succeeded = false;
-            for attempt in 1..=3 {
-                match display.get_brightness() {
-                    Ok(_) => {
-                        if attempt > 1 {
-                            tracing::info!("DDC/CI display {} succeeded on attempt {}", id, attempt);
-                        }
-                        tracing::info!("DDC/CI display {} is working, adding to daemon", id);
-                        displays.push((id.clone(), Arc::new(Mutex::new(Box::new(display)))));
-                        succeeded = true;
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::debug!("DDC/CI display {} attempt {} failed: {}", id, attempt, e);
-                        if attempt < 3 {
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                        }
-                    }
-                }
-            }
-
-            if !succeeded {
-                tracing::debug!("DDC/CI display {} failed after 3 attempts, skipping", id);
-            }
-        }
-
-        // Enumerate Apple HID displays if the feature is enabled and test them
-        #[cfg(feature = "apple-hid-displays")]
-        {
-            let api = hidapi::HidApi::new().context("Failed to initialize HID API")?;
-            let apple_displays = AppleHidDisplay::enumerate(&api)
-                .context("Failed to enumerate Apple HID displays")?;
-            tracing::info!("Found {} Apple HID display(s) to probe", apple_displays.len());
-            for mut display in apple_displays {
-                let id = display.id();
-
-                // Test if display responds to brightness commands
-                match display.get_brightness() {
-                    Ok(_) => {
-                        tracing::info!("Apple HID display {} is working, adding to daemon", id);
-                        displays.push((id, Arc::new(Mutex::new(Box::new(display)))));
-                    }
-                    Err(e) => {
-                        tracing::debug!("Apple HID display {} failed probe, skipping: {}", id, e);
-                    }
-                }
-            }
-        }
-
-        if displays.is_empty() {
-            tracing::info!("No external displays detected, brightness sync daemon disabled");
+        if display_count == 0 {
+            tracing::info!("No external displays detected in DisplayManager, brightness sync daemon disabled");
             return Ok(None);
         }
+
 
         // Load configuration handler for runtime config access
         let config_handler = match CosmicConfig::new(APPID, CONFIG_VERSION) {
@@ -138,12 +83,12 @@ impl BrightnessSyncDaemon {
         };
 
         tracing::info!(
-            "Found {} external display(s), enabling brightness sync daemon with per-monitor control",
-            displays.len()
+            "Found {} external display(s) in DisplayManager, enabling brightness sync daemon with per-monitor control",
+            display_count
         );
 
         Ok(Some(Self {
-            displays,
+            display_manager,
             config_handler,
             last_brightness: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         }))
@@ -235,20 +180,31 @@ impl BrightnessSyncDaemon {
                 let mut synced_count = 0;
                 let mut last_brightness_map = self.last_brightness.lock().await;
 
-                for (id, display) in &self.displays {
-                    if config.is_sync_enabled(id) {
+                // Get all display IDs from DisplayManager
+                let display_ids = self.display_manager.get_all_ids().await;
+
+                for id in display_ids {
+                    if config.is_sync_enabled(&id) {
+                        // Get display from DisplayManager
+                        let display = match self.display_manager.get(&id).await {
+                            Some(d) => d,
+                            None => {
+                                tracing::warn!("Display {} not found in DisplayManager", id);
+                                continue;
+                            }
+                        };
                         // Apply gamma correction for this monitor
-                        let gamma = config.get_gamma_map(id);
+                        let gamma = config.get_gamma_map(&id);
                         let mut gamma_corrected = crate::app::get_mapped_brightness(slider_value, gamma);
 
                         // Apply minimum brightness clamp
-                        let min_brightness = config.get_min_brightness(id);
+                        let min_brightness = config.get_min_brightness(&id);
                         if gamma_corrected < min_brightness {
                             gamma_corrected = min_brightness;
                         }
 
                         // Check if brightness actually changed or if at min/max boundary
-                        let last_value = last_brightness_map.get(id).copied();
+                        let last_value = last_brightness_map.get(&id).copied();
 
                         // Skip if brightness hasn't changed
                         if last_value == Some(gamma_corrected) {
@@ -289,7 +245,7 @@ impl BrightnessSyncDaemon {
                         // Spawn blocking task for each display to set brightness in parallel
                         let task = tokio::task::spawn_blocking(move || {
                             let start = std::time::Instant::now();
-                            let mut display_guard = display_clone.lock().unwrap();
+                            let mut display_guard = futures::executor::block_on(display_clone.lock());
 
                             // Retry once if first attempt fails
                             // DDC/CI protocol requires 40ms between commands, so we add 50ms delay before retry
@@ -348,8 +304,8 @@ impl BrightnessSyncDaemon {
 
 /// Spawn the brightness sync daemon if external displays are detected
 #[cfg(feature = "brightness-sync-daemon")]
-pub async fn spawn_if_needed() {
-    match BrightnessSyncDaemon::new().await {
+pub async fn spawn_if_needed(display_manager: crate::monitor::DisplayManager) {
+    match BrightnessSyncDaemon::new(display_manager).await {
         Ok(Some(daemon)) => {
             // Spawn daemon in background
             tokio::spawn(async move {

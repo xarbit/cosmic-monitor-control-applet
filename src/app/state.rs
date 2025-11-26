@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::{Config, MonitorConfig};
-use crate::monitor::{DisplayId, EventToSub, MonitorInfo};
+use crate::monitor::{DisplayId, DisplayManager, EventToSub, MonitorInfo};
 use crate::permissions::PermissionCheckResult;
 use cosmic::app::{Core, Task};
 use cosmic::cosmic_config::Config as CosmicConfig;
@@ -55,6 +55,7 @@ pub struct AppState {
     pub(super) last_quit: Option<(u128, PopupKind)>,
     pub permission_status: Option<PermissionCheckResult>,
     pub show_permission_view: bool,
+    pub display_manager: DisplayManager,
 }
 
 impl AppState {
@@ -96,6 +97,7 @@ impl AppState {
             last_quit: None,
             permission_status: Some(permission_status),
             show_permission_view: false,
+            display_manager: DisplayManager::new(),
         }
     }
 

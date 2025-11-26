@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use crate::protocols::ddc_ci::DdcCiDisplay;
 use crate::protocols::DisplayProtocol;
@@ -17,7 +16,7 @@ pub async fn enumerate_displays(
     known_ids: &std::collections::HashSet<DisplayId>,
 ) -> (
     HashMap<DisplayId, MonitorInfo>,
-    HashMap<DisplayId, Arc<Mutex<DisplayBackend>>>,
+    HashMap<DisplayId, std::sync::Arc<tokio::sync::Mutex<DisplayBackend>>>,
     bool,
 ) {
     let mut res = HashMap::new();
@@ -112,7 +111,7 @@ pub async fn enumerate_displays(
             Ok(Ok((id, mon, backend))) => {
                 info!("Successfully initialized DDC/CI display: {} ({})", mon.name, id);
                 res.insert(id.clone(), mon);
-                displays.insert(id, Arc::new(Mutex::new(backend)));
+                displays.insert(id, std::sync::Arc::new(tokio::sync::Mutex::new(backend)));
             }
             Ok(Err(e)) => {
                 error!("Failed to initialize DDC/CI display: {}", e);
@@ -183,7 +182,7 @@ pub async fn enumerate_displays(
         for (id, mon, backend) in apple_result {
             info!("Successfully initialized Apple HID display: {} ({})", mon.name, id);
             res.insert(id.clone(), mon);
-            displays.insert(id, Arc::new(Mutex::new(backend)));
+            displays.insert(id, std::sync::Arc::new(tokio::sync::Mutex::new(backend)));
         }
     }
 

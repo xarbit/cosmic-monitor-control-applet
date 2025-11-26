@@ -43,8 +43,9 @@ impl cosmic::Application for AppState {
         // Spawn brightness sync daemon if external displays are detected
         #[cfg(feature = "brightness-sync-daemon")]
         {
-            tokio::spawn(async {
-                crate::daemon::spawn_if_needed().await;
+            let display_manager = window.display_manager.clone();
+            tokio::spawn(async move {
+                crate::daemon::spawn_if_needed(display_manager).await;
             });
         }
 
@@ -88,11 +89,13 @@ impl cosmic::Application for AppState {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
+        let display_manager = self.display_manager.clone();
+
         let mut subs = vec![
             self.core
                 .watch_config(THEME_MODE_ID)
                 .map(|u| AppMsg::ThemeModeConfigChanged(u.config)),
-            Subscription::run(crate::monitor::sub),
+            Subscription::run_with_id("monitor", crate::monitor::sub(display_manager)),
             Subscription::run(crate::hotplug::hotplug_subscription),
             config::sub(),
         ];

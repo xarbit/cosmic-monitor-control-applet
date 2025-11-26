@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cosmic::iced::{
@@ -12,23 +11,23 @@ use crate::app::AppMsg;
 
 use super::backend::{DisplayBackend, DisplayId, EventToSub};
 use super::enumeration::enumerate_displays;
+use super::manager::DisplayManager;
 
 enum State {
     Waiting,
     Fetch(Option<tokio::sync::watch::Sender<EventToSub>>),
     Ready(
-        HashMap<DisplayId, Arc<Mutex<DisplayBackend>>>,
         tokio::sync::watch::Sender<EventToSub>,
         Receiver<EventToSub>,
     ),
 }
 
-pub fn sub() -> impl Stream<Item = AppMsg> {
+pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
     stream::channel(100, |mut output| async move {
         let mut state = State::Fetch(None); // Start immediately, no waiting
         let mut failed_attempts = 0;
-        // Cache of successfully initialized displays
-        let mut display_cache: HashMap<DisplayId, Arc<Mutex<DisplayBackend>>> = HashMap::new();
+        // Cache of successfully initialized displays (now managed by DisplayManager)
+        let mut display_cache: HashMap<DisplayId, std::sync::Arc<tokio::sync::Mutex<DisplayBackend>>> = HashMap::new();
 
         loop {
             match &mut state {
@@ -54,7 +53,7 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                         // Get current brightness from cached backend
                         // This is fast since we skip the initialization/wake-up sequence
                         let (keep, name, brightness) = {
-                            let mut guard = backend.lock().unwrap();
+                            let mut guard = backend.lock().await;
                             match guard.get_brightness() {
                                 Ok(b) => (true, guard.name(), b),
                                 Err(_) => (false, String::new(), 0),
@@ -76,6 +75,9 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
 
                     // Update cache with all working displays (cached + new)
                     display_cache = all_displays.clone();
+
+                    // Update the shared DisplayManager with all working displays
+                    display_manager.update_displays(all_displays.clone()).await;
 
                     if some_failed {
                         failed_attempts += 1;
@@ -110,21 +112,27 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                     // Reset failed_attempts after successful enumeration
                     failed_attempts = 0;
 
-                    state = State::Ready(all_displays, tx, rx);
+                    state = State::Ready(tx, rx);
                 }
-                State::Ready(displays, tx, rx) => {
+                State::Ready(tx, rx) => {
                     rx.changed().await.unwrap();
 
                     let last = rx.borrow_and_update().clone();
                     match last {
                         EventToSub::Refresh => {
-                            for (id, display) in displays {
-                                let display_clone = display.clone();
+                            // Get all display IDs from the DisplayManager
+                            let display_ids = display_manager.get_all_ids().await;
+
+                            for id in display_ids {
+                                let display = match display_manager.get(&id).await {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
                                 let id_clone = id.clone();
 
                                 // Read brightness in spawn_blocking with retry logic
                                 let res = tokio::task::spawn_blocking(move || {
-                                    let mut display_guard = display_clone.lock().unwrap();
+                                    let mut display_guard = futures::executor::block_on(display.lock());
 
                                     // Retry once if first attempt fails (DDC/CI may be busy)
                                     match display_guard.get_brightness() {
@@ -157,12 +165,16 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                         }
                         EventToSub::Set(id, value) => {
                             debug_assert!(value <= 100);
-                            let display = displays.get_mut(&id).unwrap().clone();
+                            let display = match display_manager.get(&id).await {
+                                Some(d) => d,
+                                None => {
+                                    error!("Display {} not found in manager", id);
+                                    continue;
+                                }
+                            };
 
                             let j = tokio::task::spawn_blocking(move || {
-                                if let Err(err) = display
-                                    .lock()
-                                    .unwrap()
+                                if let Err(err) = futures::executor::block_on(display.lock())
                                     .set_brightness(value)
                                 {
                                     error!("{:?}", err);
@@ -173,8 +185,8 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
                         EventToSub::ReEnumerate => {
-                            // Update cache with current displays before re-enumerating
-                            display_cache = displays.clone();
+                            // Cache is maintained by DisplayManager now
+                            // Just keep local cache for re-enumeration optimization
 
                             // Transition back to Fetch state with existing sender
                             // The display_cache will be used to avoid re-probing known displays
