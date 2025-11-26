@@ -73,6 +73,8 @@ pub struct MonitorInfo {
 pub enum EventToSub {
     Refresh,
     Set(DisplayId, ScreenBrightness),
+    /// Set brightness for multiple displays atomically (won't be lost in watch channel)
+    SetBatch(Vec<(DisplayId, ScreenBrightness)>),
     /// Re-enumerate with cache (for hotplug events)
     #[allow(dead_code)]
     ReEnumerate,

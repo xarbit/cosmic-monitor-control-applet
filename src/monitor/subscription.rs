@@ -174,6 +174,8 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                         }
                         EventToSub::Set(id, value) => {
                             debug_assert!(value <= 100);
+                            info!(">>> SUBSCRIPTION: Received Set command for {} = {}%", id, value);
+
                             let display = match display_manager.get(&id).await {
                                 Some(d) => d,
                                 None => {
@@ -186,6 +188,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                             };
 
                             let id_clone = id.clone();
+                            let value_clone = value;
 
                             // Set brightness in spawn_blocking to move blocking I/O off async runtime
                             let j = tokio::task::spawn_blocking(move || {
@@ -193,18 +196,74 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                 // This is the proper way to lock tokio::Mutex from within spawn_blocking
                                 let mut display_guard = display.blocking_lock();
 
-                                if let Err(err) = display_guard.set_brightness(value) {
-                                    error!(
-                                        display_id = %id_clone,
-                                        brightness = %value,
-                                        error = ?err,
-                                        "Failed to set brightness"
-                                    );
+                                info!(">>> SUBSCRIPTION: Setting {} to {}%", id_clone, value_clone);
+                                match display_guard.set_brightness(value_clone) {
+                                    Ok(_) => {
+                                        info!(">>> SUBSCRIPTION: Successfully set {} to {}%", id_clone, value_clone);
+                                    }
+                                    Err(err) => {
+                                        error!(
+                                            display_id = %id_clone,
+                                            brightness = %value_clone,
+                                            error = ?err,
+                                            "Failed to set brightness"
+                                        );
+                                    }
                                 }
                             });
 
                             j.await.unwrap();
+                            info!(">>> SUBSCRIPTION: Completed Set for {} = {}%", id, value);
                             tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
+                        EventToSub::SetBatch(commands) => {
+                            info!(">>> SUBSCRIPTION: Received SetBatch with {} commands", commands.len());
+
+                            // Process all brightness commands
+                            for (id, value) in commands {
+                                debug_assert!(value <= 100);
+                                info!(">>> SUBSCRIPTION: Processing batch command for {} = {}%", id, value);
+
+                                let display = match display_manager.get(&id).await {
+                                    Some(d) => d,
+                                    None => {
+                                        error!(
+                                            display_id = %id,
+                                            "Display not found in manager (batch)"
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                let id_clone = id.clone();
+                                let value_clone = value;
+
+                                // Set brightness in spawn_blocking
+                                let j = tokio::task::spawn_blocking(move || {
+                                    let mut display_guard = display.blocking_lock();
+
+                                    info!(">>> SUBSCRIPTION: Setting {} to {}% (batch)", id_clone, value_clone);
+                                    match display_guard.set_brightness(value_clone) {
+                                        Ok(_) => {
+                                            info!(">>> SUBSCRIPTION: Successfully set {} to {}% (batch)", id_clone, value_clone);
+                                        }
+                                        Err(err) => {
+                                            error!(
+                                                display_id = %id_clone,
+                                                brightness = %value_clone,
+                                                error = ?err,
+                                                "Failed to set brightness (batch)"
+                                            );
+                                        }
+                                    }
+                                });
+
+                                j.await.unwrap();
+                                info!(">>> SUBSCRIPTION: Completed batch command for {} = {}%", id, value);
+                                tokio::time::sleep(Duration::from_millis(50)).await;
+                            }
+
+                            info!(">>> SUBSCRIPTION: SetBatch completed");
                         }
                         EventToSub::ReEnumerate => {
                             // Cache is maintained by DisplayManager now

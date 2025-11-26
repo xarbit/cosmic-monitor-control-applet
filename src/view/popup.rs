@@ -89,7 +89,13 @@ impl AppState {
                 (!self.monitors.is_empty()).then(|| padded_control(divider::horizontal::default())),
             );
 
+        // Add profiles section if there are monitors
+        content = content.push_maybe(self.profiles_view());
+
         col.push(content
+            .push_maybe(
+                (!self.monitors.is_empty()).then(|| padded_control(divider::horizontal::default())),
+            )
             .push(padded_control(
                 row()
                     .align_y(Alignment::Center)

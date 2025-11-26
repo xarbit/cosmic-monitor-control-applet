@@ -56,6 +56,11 @@ pub struct AppState {
     pub permission_status: Option<PermissionCheckResult>,
     pub show_permission_view: bool,
     pub display_manager: DisplayManager,
+    // Profile UI state
+    pub profile_dialog_open: bool,
+    pub profile_name_input: String,
+    pub editing_profile: Option<String>, // If Some, we're editing an existing profile
+    pub profiles_expanded: bool,
 }
 
 impl AppState {
@@ -98,6 +103,10 @@ impl AppState {
             permission_status: Some(permission_status),
             show_permission_view: false,
             display_manager: DisplayManager::new(),
+            profile_dialog_open: false,
+            profile_name_input: String::new(),
+            editing_profile: None,
+            profiles_expanded: false,
         }
     }
 

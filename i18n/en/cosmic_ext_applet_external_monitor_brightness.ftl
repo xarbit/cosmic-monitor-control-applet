@@ -13,3 +13,15 @@ brightness = Brightness
 brightness_curve = Brightness Curve
 sync_brightness_keys = Listen to brightness keys
 minimum_brightness = Minimum Brightness
+
+# Brightness profiles
+profiles = Brightness Profiles
+save_profile = Save Profile
+load_profile = Load Profile
+delete_profile = Delete
+edit_profile = Edit Profile
+profile_name = Profile Name
+new_profile = New Profile
+save = Save
+cancel = Cancel
+max_profiles_reached = Maximum profiles reached

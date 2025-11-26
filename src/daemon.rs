@@ -118,6 +118,12 @@ impl BrightnessSyncDaemon {
 
         tracing::info!("Listening for COSMIC brightness-key changes...");
 
+        // Skip the first emission (current value on subscription)
+        // This prevents overwriting the monitor's current brightness on startup
+        if let Some(_initial) = brightness_changed.next().await {
+            tracing::debug!("Skipping initial brightness value on subscription startup");
+        }
+
         // Debounce rapid brightness changes to prevent overwhelming DDC/CI displays
         let debounce_duration = tokio::time::Duration::from_millis(50);
 

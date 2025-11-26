@@ -30,6 +30,17 @@ pub enum AppMsg {
     Refresh,
     RefreshMonitors,
     TogglePermissionView,
+
+    // Profile management
+    ToggleProfilesSection,  // Toggle profiles section expanded/collapsed
+    OpenNewProfileDialog,  // Open dialog to create new profile
+    OpenEditProfileDialog(String),  // Open dialog to edit existing profile
+    ProfileNameInput(String),  // Update profile name input field
+    SaveProfileConfirm,  // Confirm save (from dialog)
+    CancelProfileDialog,  // Cancel profile creation/edit
+    LoadProfile(String),  // Load brightness values from a profile
+    DeleteProfile(String),  // Delete a profile
+
     /// No operation message (for daemon spawn task)
     #[allow(dead_code)]
     Noop,

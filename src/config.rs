@@ -12,12 +12,33 @@ use crate::{
 };
 
 pub const CONFIG_VERSION: u64 = 1;
+pub const MAX_PROFILES: usize = 10;
+
+/// A brightness profile stores brightness values for all monitors
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct BrightnessProfile {
+    pub name: String,
+    /// Map of display_id -> brightness (0-100)
+    pub brightness_values: HashMap<DisplayId, u16>,
+}
+
+impl BrightnessProfile {
+    pub fn new(name: String, brightness_values: HashMap<DisplayId, u16>) -> Self {
+        Self {
+            name,
+            brightness_values,
+        }
+    }
+}
 
 #[derive(Clone, CosmicConfigEntry, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct Config {
     pub monitors: HashMap<DisplayId, MonitorConfig>,
+    /// Saved brightness profiles
+    #[serde(default)]
+    pub profiles: Vec<BrightnessProfile>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -78,6 +99,26 @@ impl Config {
 
     pub fn get_min_brightness(&self, id: &str) -> u16 {
         self.monitors.get(id).map(|m| m.min_brightness).unwrap_or(0)
+    }
+
+    /// Find a profile by name
+    pub fn get_profile(&self, name: &str) -> Option<&BrightnessProfile> {
+        self.profiles.iter().find(|p| p.name == name)
+    }
+
+    /// Add or update a profile
+    pub fn save_profile(&mut self, profile: BrightnessProfile) {
+        // Remove any existing profile with the same name
+        self.profiles.retain(|p| p.name != profile.name);
+        // Add the new profile
+        self.profiles.push(profile);
+    }
+
+    /// Delete a profile by name
+    pub fn delete_profile(&mut self, name: &str) -> bool {
+        let len_before = self.profiles.len();
+        self.profiles.retain(|p| p.name != name);
+        self.profiles.len() != len_before
     }
 }
 
