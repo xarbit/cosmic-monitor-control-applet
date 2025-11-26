@@ -82,8 +82,6 @@ impl AppState {
             );
 
         col.push(content
-            .push(self.dark_mode_view())
-            .push(padded_control(divider::horizontal::default()))
             .push(padded_control(
                 row()
                     .align_y(Alignment::Center)
@@ -94,6 +92,8 @@ impl AppState {
                             .on_press(AppMsg::TogglePermissionView)
                     )
             ))
+            .push(padded_control(divider::horizontal::default()))
+            .push(self.dark_mode_view())
         )
         .into()
     }

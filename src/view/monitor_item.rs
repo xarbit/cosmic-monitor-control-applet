@@ -18,6 +18,7 @@ impl AppState {
 
             column()
                 .padding(8)
+                .spacing(12)
                 .extend(
                     monitors
                         .into_iter()
@@ -33,29 +34,18 @@ impl AppState {
 
         row()
             .padding(2.0)
+            .spacing(12.0)
             .push(
                 container(
                     mouse_area(
-                        column()
-                            .spacing(8.0)
-                            .padding(4.0)
-                            .push(tooltip(
-                                icon::icon(brightness_icon(monitor.slider_brightness)).size(24),
-                                text(&monitor.name),
-                                tooltip::Position::Right,
-                            ))
-                            .push_maybe(monitor.settings_expanded.then(|| {
-                                tooltip(
-                                    icon::from_name("emblem-system-symbolic")
-                                        .size(24)
-                                        .symbolic(true),
-                                    text(fl!("monitor_settings")),
-                                    tooltip::Position::Right,
-                                )
-                            })),
+                        tooltip(
+                            icon::icon(brightness_icon(monitor.slider_brightness))
+                                .size(24),
+                            text(&monitor.name),
+                            tooltip::Position::Right,
+                        )
                     )
                     .on_press(AppMsg::ToggleMinMaxBrightness(id.to_string()))
-                    .on_right_press(AppMsg::ToggleMonSettings(id.to_string()))
                     .on_scroll(|delta| {
                         let change = match delta {
                             cosmic::iced::mouse::ScrollDelta::Lines { x, y } => (x + y) / 20.0,
@@ -78,8 +68,28 @@ impl AppState {
                     .spacing(8.0)
                     .padding(4.0)
                     .push(
-                        text(&monitor.name)
-                            .size(12),
+                        row()
+                            .spacing(8.0)
+                            .align_y(Alignment::Center)
+                            .push(
+                                column()
+                                    .spacing(2.0)
+                                    .push(
+                                        text(&monitor.name)
+                                            .size(12)
+                                    )
+                                    .push(
+                                        text(id)
+                                            .size(9)
+                                            .class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6)))
+                                    )
+                            )
+                            .push(horizontal_space())
+                            .push(
+                                button::icon(icon::from_name("emblem-system-symbolic"))
+                                    .padding(4)
+                                    .on_press(AppMsg::ToggleMonSettings(id.to_string()))
+                            )
                     )
                     .push(
                         row()
@@ -117,9 +127,10 @@ fn monitor_settings_view<'a>(
 ) -> Element<'a, AppMsg> {
     let min_brightness = app_state.config.get_min_brightness(id);
 
-    column()
-        .spacing(8)
-        .push(
+    container(
+        column()
+            .spacing(8)
+            .push(
             row()
                 .spacing(12)
                 .align_y(Alignment::Center)
@@ -192,5 +203,8 @@ fn monitor_settings_view<'a>(
                         .on_toggle(move |enabled| AppMsg::SetMonitorSyncEnabled(id.to_string(), enabled))
                 )
         )
-        .into()
+    )
+    .padding(12)
+    .class(cosmic::style::Container::Card)
+    .into()
 }
