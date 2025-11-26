@@ -55,7 +55,7 @@ async fn subscribe_to_brightness_changes(
     use futures::StreamExt;
     let mut brightness_changed = proxy.receive_display_brightness_changed().await;
 
-    debug!("Listening for COSMIC brightness changes to update UI sliders...");
+    debug!("Listening for COSMIC brightness-key changes to update UI sliders...");
 
     while let Some(change) = brightness_changed.next().await {
         if let Ok(_brightness) = change.get().await {

@@ -140,7 +140,7 @@ impl BrightnessSyncDaemon {
         use futures::StreamExt;
         let mut brightness_changed = proxy.receive_display_brightness_changed().await;
 
-        tracing::info!("Listening for COSMIC brightness changes (F1/F2 keys)...");
+        tracing::info!("Listening for COSMIC brightness-key changes...");
 
         while let Some(change) = brightness_changed.next().await {
             if let Ok(brightness) = change.get().await {
