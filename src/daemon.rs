@@ -51,6 +51,7 @@ trait CosmicSettingsDaemon {
 pub struct BrightnessSyncDaemon {
     displays: Vec<(String, Arc<Mutex<Box<dyn DisplayProtocol>>>)>,  // (id, display) pairs wrapped for thread-safe access
     config_handler: CosmicConfig,
+    last_brightness: Arc<tokio::sync::Mutex<std::collections::HashMap<String, u16>>>,  // Track last brightness per display
 }
 
 #[cfg(feature = "brightness-sync-daemon")]
@@ -128,6 +129,7 @@ impl BrightnessSyncDaemon {
         Ok(Some(Self {
             displays,
             config_handler,
+            last_brightness: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         }))
     }
 
@@ -160,9 +162,31 @@ impl BrightnessSyncDaemon {
 
         tracing::info!("Listening for COSMIC brightness-key changes...");
 
+        // Debounce rapid brightness changes to prevent overwhelming DDC/CI displays
+        let debounce_duration = tokio::time::Duration::from_millis(50);
+
         while let Some(change) = brightness_changed.next().await {
-            if let Ok(brightness) = change.get().await {
+            if let Ok(mut brightness) = change.get().await {
                 tracing::debug!("COSMIC brightness changed to: {}", brightness);
+
+                // Wait briefly and drain any rapid subsequent changes
+                tokio::time::sleep(debounce_duration).await;
+
+                // Drain any changes that arrived during the debounce period
+                loop {
+                    match tokio::time::timeout(
+                        tokio::time::Duration::from_millis(5),
+                        brightness_changed.next()
+                    ).await {
+                        Ok(Some(newer_change)) => {
+                            if let Ok(newer_brightness) = newer_change.get().await {
+                                tracing::debug!("Skipping intermediate brightness {}, using {}", brightness, newer_brightness);
+                                brightness = newer_brightness;
+                            }
+                        }
+                        _ => break, // Timeout or end of stream
+                    }
+                }
 
                 // Convert COSMIC brightness (0-max) to percentage (0-100)
                 let percentage = if max_brightness > 0 {
@@ -172,8 +196,8 @@ impl BrightnessSyncDaemon {
                 };
                 let percentage = percentage.min(100);
 
-                tracing::info!(
-                    "Applying {}% to external displays (COSMIC value: {}/{})",
+                tracing::debug!(
+                    "Brightness change: {}% (COSMIC value: {}/{})",
                     percentage,
                     brightness,
                     max_brightness
@@ -193,6 +217,7 @@ impl BrightnessSyncDaemon {
                 // Apply brightness to all displays in parallel
                 let mut tasks = Vec::new();
                 let mut synced_count = 0;
+                let mut last_brightness_map = self.last_brightness.lock().await;
 
                 for (id, display) in &self.displays {
                     if config.is_sync_enabled(id) {
@@ -206,17 +231,40 @@ impl BrightnessSyncDaemon {
                             gamma_corrected = min_brightness;
                         }
 
+                        // Check if brightness actually changed or if at min/max boundary
+                        let last_value = last_brightness_map.get(id).copied();
+
+                        // Skip if brightness hasn't changed
+                        if last_value == Some(gamma_corrected) {
+                            tracing::debug!("Skipping display {} - brightness unchanged at {}%", id, gamma_corrected);
+                            continue;
+                        }
+
+                        // Skip if we're at a boundary and trying to go further in the same direction
+                        if let Some(last) = last_value {
+                            if (gamma_corrected == 0 && last == 0 && gamma_corrected <= last) ||
+                               (gamma_corrected == 100 && last == 100 && gamma_corrected >= last) {
+                                tracing::debug!("Skipping display {} - already at boundary {}%", id, gamma_corrected);
+                                continue;
+                            }
+                        }
+
+                        // Update last brightness
+                        last_brightness_map.insert(id.clone(), gamma_corrected);
+
                         // Clone what we need for the async task
                         let id_clone = id.clone();
                         let display_clone = display.clone();
 
                         // Spawn blocking task for each display to set brightness in parallel
                         let task = tokio::task::spawn_blocking(move || {
+                            let start = std::time::Instant::now();
                             let mut display_guard = display_clone.lock().unwrap();
                             if let Err(e) = display_guard.set_brightness(gamma_corrected) {
                                 tracing::error!("Failed to set brightness on display {}: {}", id_clone, e);
                             } else {
-                                tracing::debug!("Set brightness to {}% (gamma-corrected from {}%, min {}) on display {} (sync enabled)", gamma_corrected, percentage, min_brightness, id_clone);
+                                let elapsed = start.elapsed();
+                                tracing::info!("Set {} to {}% in {:?}", id_clone, gamma_corrected, elapsed);
                             }
                         });
 
@@ -227,13 +275,16 @@ impl BrightnessSyncDaemon {
                     }
                 }
 
+                // Release the lock before awaiting tasks
+                drop(last_brightness_map);
+
                 // Wait for all brightness changes to complete in parallel
                 if !tasks.is_empty() {
                     for task in tasks {
                         let _ = task.await;
                     }
 
-                    tracing::debug!("Synced brightness on {} display(s) in parallel with gamma correction", synced_count);
+                    tracing::debug!("Synced brightness on {} display(s) in parallel", synced_count);
 
                     // Small delay to allow DDC monitors to process the brightness change
                     // This prevents UI flicker from race conditions when reading back brightness
