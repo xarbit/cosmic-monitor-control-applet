@@ -77,7 +77,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm base-devel rust git
+          pacman -Syu --noconfirm base-devel rust git i2c-tools hidapi
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,8 +88,8 @@ jobs:
           useradd -m builder
           chown -R builder:builder .
 
-          # Build as non-root
-          su builder -c "makepkg -s --noconfirm"
+          # Build as non-root (dependencies already installed)
+          su builder -c "makepkg --noconfirm"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
