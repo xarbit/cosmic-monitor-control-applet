@@ -102,7 +102,10 @@ impl cosmic::Application for AppState {
 
         // Add UI sync subscription when daemon feature is enabled
         #[cfg(feature = "brightness-sync-daemon")]
-        subs.push(Subscription::run(crate::ui_sync::sub));
+        {
+            let display_manager_for_ui_sync = self.display_manager.clone();
+            subs.push(Subscription::run_with_id("ui_sync", crate::ui_sync::sub(display_manager_for_ui_sync)));
+        }
 
         Subscription::batch(subs)
     }

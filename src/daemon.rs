@@ -57,15 +57,29 @@ pub struct BrightnessSyncDaemon {
 #[cfg(feature = "brightness-sync-daemon")]
 impl BrightnessSyncDaemon {
     /// Create a new brightness sync daemon
-    /// Returns None if no external displays are detected
+    /// Returns None if no external displays are detected after waiting
     pub async fn new(display_manager: crate::monitor::DisplayManager) -> Result<Option<Self>> {
-        // Check if DisplayManager has any displays
-        let display_count = display_manager.count().await;
+        // Wait for DisplayManager to be populated by the subscription
+        // The subscription enumerates displays asynchronously, so we need to wait
+        tracing::info!("Waiting for display enumeration to complete...");
 
-        if display_count == 0 {
-            tracing::info!("No external displays detected in DisplayManager, brightness sync daemon disabled");
-            return Ok(None);
-        }
+        let mut attempts = 0;
+        let display_count = loop {
+            let count = display_manager.count().await;
+            if count > 0 {
+                break count;
+            }
+
+            attempts += 1;
+            if attempts >= 50 {  // 50 * 100ms = 5 seconds max wait
+                tracing::info!("No external displays detected after waiting, brightness sync daemon disabled");
+                return Ok(None);
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        };
+
+        tracing::info!("DisplayManager ready with {} display(s)", display_count);
 
 
         // Load configuration handler for runtime config access

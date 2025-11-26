@@ -14,6 +14,12 @@ use zbus::{proxy, Connection};
 
 #[cfg(feature = "brightness-sync-daemon")]
 use crate::app::AppMsg;
+#[cfg(feature = "brightness-sync-daemon")]
+use crate::config::{Config, CONFIG_VERSION};
+#[cfg(feature = "brightness-sync-daemon")]
+use crate::app::APPID;
+#[cfg(feature = "brightness-sync-daemon")]
+use cosmic::cosmic_config::{Config as CosmicConfig, CosmicConfigEntry};
 
 #[cfg(feature = "brightness-sync-daemon")]
 /// COSMIC Settings Daemon D-Bus proxy
@@ -26,13 +32,17 @@ trait CosmicSettingsDaemon {
     /// DisplayBrightness property
     #[zbus(property)]
     fn display_brightness(&self) -> zbus::Result<i32>;
+
+    /// MaxDisplayBrightness property
+    #[zbus(property)]
+    fn max_display_brightness(&self) -> zbus::Result<i32>;
 }
 
 #[cfg(feature = "brightness-sync-daemon")]
-pub fn sub() -> impl Stream<Item = AppMsg> {
+pub fn sub(display_manager: crate::monitor::DisplayManager) -> impl Stream<Item = AppMsg> {
     stream::channel(10, |mut output| async move {
         // Try to connect to D-Bus and subscribe to brightness changes
-        match subscribe_to_brightness_changes(&mut output).await {
+        match subscribe_to_brightness_changes(&mut output, display_manager).await {
             Ok(_) => info!("UI brightness sync subscription ended"),
             Err(e) => warn!("Failed to subscribe to COSMIC brightness changes for UI sync: {}", e),
         }
@@ -42,6 +52,7 @@ pub fn sub() -> impl Stream<Item = AppMsg> {
 #[cfg(feature = "brightness-sync-daemon")]
 async fn subscribe_to_brightness_changes(
     output: &mut futures::channel::mpsc::Sender<AppMsg>,
+    display_manager: crate::monitor::DisplayManager,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Connect to session bus
     let connection = Connection::session().await?;
@@ -57,11 +68,19 @@ async fn subscribe_to_brightness_changes(
 
     debug!("Listening for COSMIC brightness-key changes to update UI sliders...");
 
+    // Get max brightness for calculating percentage
+    let max_brightness = proxy.max_display_brightness().await?;
+    debug!("Max COSMIC brightness: {}", max_brightness);
+
+    // Load config for per-monitor gamma/min brightness
+    let config_handler = CosmicConfig::new(APPID, CONFIG_VERSION)
+        .map_err(|e| format!("Failed to load config: {}", e))?;
+
     // Debounce to avoid excessive refreshes
     let debounce_duration = tokio::time::Duration::from_millis(50);
 
     while let Some(change) = brightness_changed.next().await {
-        if let Ok(_brightness) = change.get().await {
+        if let Ok(mut brightness) = change.get().await {
             debug!("COSMIC brightness changed (F1/F2 keys), debouncing...");
 
             // Wait briefly and drain any rapid changes
@@ -72,25 +91,62 @@ async fn subscribe_to_brightness_changes(
                     brightness_changed.next()
                 ).await {
                     Ok(Some(newer_change)) => {
-                        if let Ok(_) = newer_change.get().await {
+                        if let Ok(newer_brightness) = newer_change.get().await {
                             debug!("Skipping intermediate brightness change");
+                            brightness = newer_brightness;
                         }
                     }
                     _ => break,
                 }
             }
 
-            debug!("Waiting for daemon to finish setting brightness...");
+            // Calculate brightness percentage (same as daemon does)
+            let percentage = if max_brightness > 0 {
+                ((brightness as f64 / max_brightness as f64) * 100.0) as u16
+            } else {
+                0
+            };
+            let percentage = percentage.min(100);
 
-            // Wait for daemon to complete brightness change (daemon waits 200ms + DDC time ~125ms = ~325ms)
-            // Add extra buffer for safety
-            tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+            debug!("COSMIC brightness: {}% -> calculating UI slider values", percentage);
 
-            debug!("Refreshing UI with current brightness values");
+            // Load current config
+            let config = match Config::get_entry(&config_handler) {
+                Ok(config) => config,
+                Err((errs, config)) => {
+                    warn!("Errors loading config: {:?}, using defaults", errs);
+                    config
+                }
+            };
 
-            // Now safe to refresh UI from hardware
-            if output.send(AppMsg::Refresh).await.is_err() {
-                break;
+            // Get all display IDs from DisplayManager
+            let display_ids = display_manager.get_all_ids().await;
+
+            // Calculate brightness for each monitor and update UI
+            for id in display_ids {
+                if !config.is_sync_enabled(&id) {
+                    debug!("Skipping UI update for {} (sync disabled)", id);
+                    continue;
+                }
+
+                let slider_value = percentage as f32 / 100.0;
+
+                // Apply gamma correction for this monitor (same as daemon)
+                let gamma = config.get_gamma_map(&id);
+                let mut gamma_corrected = crate::app::get_mapped_brightness(slider_value, gamma);
+
+                // Apply minimum brightness clamp
+                let min_brightness = config.get_min_brightness(&id);
+                if gamma_corrected < min_brightness {
+                    gamma_corrected = min_brightness;
+                }
+
+                debug!("Updating UI for {}: slider={:.2}, gamma_corrected={}%", id, slider_value, gamma_corrected);
+
+                // Send calculated brightness to UI (no DDC read needed!)
+                if output.send(AppMsg::BrightnessWasUpdated(id, gamma_corrected)).await.is_err() {
+                    break;
+                }
             }
         }
     }
