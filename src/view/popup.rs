@@ -2,14 +2,14 @@ use crate::app::{AppMsg, AppState};
 use crate::fl;
 use cosmic::Element;
 use cosmic::applet::padded_control;
-use cosmic::iced::{Alignment, Length};
-use cosmic::widget::{button, column, container, divider, horizontal_space, icon, row, text, tooltip, Space};
+use cosmic::iced::Alignment;
+use cosmic::widget::{button, column, divider, horizontal_space, icon, row, text, tooltip, Space};
 
 use super::empty_state::empty_state_view;
 use super::permissions_warning::permissions_warning_view;
 
 impl AppState {
-    pub fn popup_view(&self) -> Element<AppMsg> {
+    pub fn popup_view(&self) -> Element<'_, AppMsg> {
         let mut col = column().spacing(0);
 
         // Top bar with rescan button in top-right corner (only in normal view)

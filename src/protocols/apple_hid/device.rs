@@ -160,6 +160,7 @@ impl AppleHidDisplay {
 
     /// Set brightness without requiring mutable DisplayProtocol trait
     /// This is a convenience method for use outside the trait
+    #[allow(dead_code)]
     pub fn set_brightness_direct(&self, percentage: u16) -> Result<()> {
         let percentage = percentage.min(100);
         let value = self.percentage_to_protocol_value(percentage);

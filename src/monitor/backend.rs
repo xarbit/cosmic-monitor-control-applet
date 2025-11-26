@@ -74,6 +74,7 @@ pub enum EventToSub {
     Refresh,
     Set(DisplayId, ScreenBrightness),
     /// Re-enumerate with cache (for hotplug events)
+    #[allow(dead_code)]
     ReEnumerate,
     /// Re-enumerate without cache (for manual refresh button)
     ReEnumerateFull,

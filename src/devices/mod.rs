@@ -10,6 +10,7 @@ pub enum Protocol {
     /// Apple HID protocol (used by Apple and LG displays)
     AppleHid,
     /// DDC/CI protocol (standard for most external monitors)
+    #[allow(dead_code)]
     DdcCi,
 }
 
@@ -21,9 +22,11 @@ pub struct DeviceSpec {
     pub product_id: u16,
 
     /// USB Vendor ID
+    #[allow(dead_code)]
     pub vendor_id: u16,
 
     /// Communication protocol
+    #[allow(dead_code)]
     pub protocol: Protocol,
 
     /// Human-readable device name
@@ -39,10 +42,12 @@ pub struct DeviceSpec {
 
     /// Actual maximum brightness capability in nits (physical measurement)
     /// This is for documentation and user information only
+    #[allow(dead_code)]
     pub actual_brightness_nits: u16,
 
     /// Default gamma curve for this device (1.0 = linear, <1.0 = brighter at low values, >1.0 = darker at low values)
     /// Apple displays typically work well with 1.8, most others with 1.0 (linear)
+    #[allow(dead_code)]
     pub default_gamma: f32,
 }
 

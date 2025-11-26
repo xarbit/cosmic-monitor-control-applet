@@ -25,7 +25,7 @@ impl UdevMonitor {
     ///
     /// This function blocks indefinitely, polling the udev socket.
     /// Returns only if there's a poll error.
-    pub fn run<F>(mut self, mut callback: F) -> std::io::Error
+    pub fn run<F>(self, mut callback: F) -> std::io::Error
     where
         F: FnMut(udev::Event) -> bool, // Returns true to continue, false to stop
     {

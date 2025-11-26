@@ -11,7 +11,7 @@ use super::common::brightness_icon;
 
 impl AppState {
     /// View for a list of all monitors
-    pub fn monitors_view(&self) -> Option<Element<AppMsg>> {
+    pub fn monitors_view(&self) -> Option<Element<'_, AppMsg>> {
         (!self.monitors.is_empty()).then(|| {
             let mut monitors: Vec<_> = self.monitors.iter().collect();
             monitors.sort_by_key(|(id, _)| *id);

@@ -6,7 +6,7 @@ use cosmic::iced::Alignment;
 use cosmic::widget::{horizontal_space, mouse_area, row, text, toggler};
 
 impl AppState {
-    pub fn dark_mode_view(&self) -> Element<AppMsg> {
+    pub fn dark_mode_view(&self) -> Element<'_, AppMsg> {
         padded_control(
             mouse_area(
                 row()

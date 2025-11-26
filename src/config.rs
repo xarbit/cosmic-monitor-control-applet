@@ -48,6 +48,7 @@ impl MonitorConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_default_gamma(gamma: f32) -> Self {
         Self {
             gamma_map: gamma,

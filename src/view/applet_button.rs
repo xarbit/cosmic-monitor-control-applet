@@ -5,7 +5,7 @@ use super::common::brightness_icon;
 use crate::icon::icon_off;
 
 impl AppState {
-    pub fn applet_button_view(&self) -> Element<AppMsg> {
+    pub fn applet_button_view(&self) -> Element<'_, AppMsg> {
         self.core
             .applet
             .icon_button_from_handle(

@@ -66,11 +66,11 @@ impl cosmic::Application for AppState {
         self.update(message)
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         self.applet_button_view()
     }
 
-    fn view_window(&self, _id: window::Id) -> Element<Self::Message> {
+    fn view_window(&self, _id: window::Id) -> Element<'_, Self::Message> {
         let Some(popup) = &self.popup else {
             return Space::new(0, 0).into();
         };

@@ -6,7 +6,7 @@ use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{column, container, icon, row, text};
 
 /// Permissions warning view showing detailed requirements with checkmarks/X marks
-pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<AppMsg> {
+pub fn permissions_warning_view(result: &PermissionCheckResult) -> Element<'_, AppMsg> {
     let mut requirements_column = column().spacing(8);
 
     for req in result.requirements.clone() {

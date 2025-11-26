@@ -8,6 +8,7 @@ use crate::monitor::EventToSub;
 #[derive(Clone, Debug)]
 pub enum AppMsg {
     TogglePopup,
+    #[allow(dead_code)]
     ToggleQuickSettings,
     ClosePopup,
 
@@ -30,5 +31,6 @@ pub enum AppMsg {
     RefreshMonitors,
     TogglePermissionView,
     /// No operation message (for daemon spawn task)
+    #[allow(dead_code)]
     Noop,
 }

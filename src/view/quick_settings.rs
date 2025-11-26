@@ -5,7 +5,7 @@ use cosmic::iced::Length;
 use cosmic::widget::{button, column};
 
 impl AppState {
-    pub fn quick_settings_view(&self) -> Element<AppMsg> {
+    pub fn quick_settings_view(&self) -> Element<'_, AppMsg> {
         column()
             .width(Length::Fill)
             .spacing(20)
