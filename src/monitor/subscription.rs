@@ -28,6 +28,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
         let mut failed_attempts = 0;
         // Cache of successfully initialized displays (now managed by DisplayManager)
         let mut display_cache: HashMap<DisplayId, std::sync::Arc<tokio::sync::Mutex<DisplayBackend>>> = HashMap::new();
+        let mut is_enumerating = false; // Track if enumeration is in progress
 
         loop {
             match &mut state {
@@ -37,39 +38,72 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     state = State::Fetch(None);
                 }
                 State::Fetch(existing_sender) => {
+                    is_enumerating = true;
+
                     // Build set of known display IDs from cache
                     let known_ids: HashSet<DisplayId> = display_cache.keys().cloned().collect();
                     let is_re_enumerate = !display_cache.is_empty();
 
-                    info!("Enumerating displays (cached: {}, re-enumerate: {})", display_cache.len(), is_re_enumerate);
+                    if is_re_enumerate {
+                        info!("Re-enumerating displays (cached: {}, will keep working displays)", display_cache.len());
+                    } else {
+                        info!("Initial display enumeration");
+                    }
+
+                    // Enumerate with error recovery
                     let (mut res, new_displays, some_failed) = enumerate_displays(&known_ids).await;
+
+                    is_enumerating = false;
+
+                    // Safety check: During re-enumeration, if we find NO new displays,
+                    // we still need to verify cached displays are working before keeping them
 
                     // Merge: Add all newly enumerated displays to results
                     let mut all_displays = new_displays;
 
                     // Add cached displays back to results and all_displays
-                    // Get current brightness for all cached displays
+                    // Get current brightness for all cached displays with timeout
                     for (id, backend) in &display_cache {
-                        // Get current brightness from cached backend
-                        // This is fast since we skip the initialization/wake-up sequence
-                        let (keep, name, brightness) = {
-                            let mut guard = backend.lock().await;
-                            match guard.get_brightness() {
-                                Ok(b) => (true, guard.name(), b),
-                                Err(_) => (false, String::new(), 0),
-                            }
-                        };
+                        let id_clone = id.clone();
+                        let backend_clone = backend.clone();
 
-                        if keep {
-                            res.insert(id.clone(), super::backend::MonitorInfo { name, brightness });
-                            all_displays.insert(id.clone(), backend.clone());
-                            if is_re_enumerate {
-                                info!("Using cached display (quick read): {} (brightness: {})", id, brightness);
-                            } else {
-                                info!("Kept cached display: {} (brightness: {})", id, brightness);
+                        // Check if display is still alive with a timeout
+                        // If unplugged, the I/O will hang - timeout quickly to detect removal
+                        let check_result = tokio::time::timeout(
+                            Duration::from_millis(200), // Quick timeout for unplugged detection
+                            tokio::task::spawn_blocking(move || {
+                                let mut guard = backend_clone.blocking_lock();
+                                match guard.get_brightness() {
+                                    Ok(b) => Some((guard.name(), b)),
+                                    Err(_) => None,
+                                }
+                            })
+                        ).await;
+
+                        match check_result {
+                            Ok(Ok(Some((name, brightness)))) => {
+                                // Display is alive and responsive
+                                res.insert(id.clone(), super::backend::MonitorInfo { name, brightness });
+                                all_displays.insert(id.clone(), backend.clone());
+                                if is_re_enumerate {
+                                    info!("Using cached display (quick read): {} (brightness: {})", id, brightness);
+                                } else {
+                                    info!("Kept cached display: {} (brightness: {})", id, brightness);
+                                }
                             }
-                        } else {
-                            info!("Removed stale cached display: {}", id);
+                            Ok(Ok(None)) => {
+                                // Display returned error - likely unplugged
+                                info!("Removed stale cached display (error): {}", id);
+                            }
+                            Ok(Err(e)) => {
+                                // Task join error
+                                error!("Task join error checking display {}: {:?}", id, e);
+                                info!("Removed cached display due to task error: {}", id);
+                            }
+                            Err(_) => {
+                                // Timeout - display is hanging/unplugged
+                                info!("Removed stale cached display (timeout): {}", id);
+                            }
                         }
                     }
 
@@ -150,8 +184,8 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                         Ok(v) => Ok(v),
                                         Err(_e) => {
                                             // DDC/CI may still be processing previous command
-                                            // Wait longer to ensure it's ready
-                                            std::thread::sleep(std::time::Duration::from_millis(100));
+                                            // Wait minimal time before retry (DDC/CI spec requires 40ms between commands)
+                                            std::thread::sleep(std::time::Duration::from_millis(50));
                                             match display_guard.get_brightness() {
                                                 Ok(v) => Ok(v),
                                                 Err(e2) => Err(e2)
@@ -235,7 +269,8 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                 error!("spawn_blocking join error for Set: {:?}", e);
                             }
                             info!(">>> SUBSCRIPTION: Completed Set for {} = {}%", id, value);
-                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            // Minimal delay for DDC/CI protocol (40ms required between commands)
+                            tokio::time::sleep(Duration::from_millis(40)).await;
                         }
                         EventToSub::SetBatch(commands) => {
                             info!(">>> SUBSCRIPTION: Received SetBatch with {} commands", commands.len());
@@ -283,12 +318,18 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                     error!("spawn_blocking join error for SetBatch: {:?}", e);
                                 }
                                 info!(">>> SUBSCRIPTION: Completed batch command for {} = {}%", id, value);
-                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                // Minimal delay for DDC/CI protocol (40ms required between commands)
+                                tokio::time::sleep(Duration::from_millis(40)).await;
                             }
 
                             info!(">>> SUBSCRIPTION: SetBatch completed");
                         }
                         EventToSub::ReEnumerate => {
+                            if is_enumerating {
+                                warn!("ReEnumerate requested but enumeration already in progress - ignoring");
+                                continue;
+                            }
+
                             // Cache is maintained by DisplayManager now
                             // Just keep local cache for re-enumeration optimization
 
@@ -298,6 +339,11 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                             state = State::Fetch(Some(tx.clone()));
                         }
                         EventToSub::ReEnumerateFull => {
+                            if is_enumerating {
+                                warn!("ReEnumerateFull requested but enumeration already in progress - ignoring");
+                                continue;
+                            }
+
                             // Clear cache for manual refresh - user wants full re-scan
                             info!("ReEnumerateFull event received (manual refresh), clearing cache and doing full probe");
                             display_cache.clear();

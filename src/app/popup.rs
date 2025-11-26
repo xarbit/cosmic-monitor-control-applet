@@ -52,13 +52,11 @@ impl AppState {
                     None,
                 );
 
-                popup_settings.positioner.size_limits = Limits::NONE
-                    .min_width(300.0)
-                    .max_width(400.0)
-                    .min_height(200.0)
-                    .max_height(500.0);
+                // Let popup size naturally to content
+                popup_settings.positioner.size_limits = Limits::NONE;
 
-                popup_settings.positioner.size = Some((350, 300));
+                // No fixed size - will auto-size to content
+                popup_settings.positioner.size = None;
 
                 // Don't trigger re-enumeration on popup open - makes it feel slow
                 // User can click refresh button if needed for hotplug detection

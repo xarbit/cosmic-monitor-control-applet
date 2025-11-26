@@ -21,19 +21,26 @@ sudo install -Dm0644 res/icons/display-symbolic.svg "$ICON_DST"
 sudo install -Dm0644 res/metainfo.xml "$METAINFO_DST"
 
 echo ""
-echo "Killing existing COSMIC panel processes..."
+echo "Killing existing COSMIC panel and applet processes..."
 pkill -9 cosmic-panel || true
-sleep 1
-pkill -9 cosmic-monitor-control-applet || true
+pkill -9 -f cosmic-monitor || true
+pkill -9 -f cosmic-applet || true
 
 echo ""
 echo "Waiting 3 seconds for all processes to fully stop..."
 sleep 3
 
+# Verify everything is killed
+if pgrep cosmic-panel > /dev/null; then
+    echo "Warning: Some cosmic-panel processes still running, killing again..."
+    pkill -9 cosmic-panel
+    sleep 2
+fi
+
 echo ""
 echo "Starting COSMIC panel..."
-nohup cosmic-panel > /dev/null 2>&1 &
-sleep 1
+cosmic-panel > /dev/null 2>&1 &
+sleep 2
 
 echo ""
 echo "Done! The applet is now installed."

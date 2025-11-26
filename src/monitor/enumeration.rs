@@ -48,20 +48,30 @@ pub async fn enumerate_displays(
 
                 // Wake up DDC by doing a read-write cycle
                 // Some DDC monitors need an initial write to establish I2C communication
-                if let Ok(current_brightness) = backend.get_brightness() {
-                    let _ = backend.set_brightness(current_brightness);
-                    // Small delay to let DDC settle
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                // Try to read current brightness, and if successful, write it back to wake up the display
+                // If the first read fails, still try a write with a default value to wake it up
+                match backend.get_brightness() {
+                    Ok(current_brightness) => {
+                        // Display responded, write back to ensure wake-up
+                        let _ = backend.set_brightness(current_brightness);
+                    }
+                    Err(_) => {
+                        // Display didn't respond, try writing a value to wake it up
+                        // Use 50% as a safe default that won't blind or go dark
+                        let _ = backend.set_brightness(50);
+                    }
                 }
+                // Always wait for DDC to settle after wake-up attempt
+                std::thread::sleep(std::time::Duration::from_millis(100));
 
                 // Retry logic for DDC/CI communication errors
-                // After hotplug, DDC/CI may not be ready immediately
-                // Some monitors need multiple attempts with longer delays
+                // After hotplug/wake-up, DDC/CI may not be ready immediately
+                // Some monitors need multiple attempts with delays
                 let brightness = {
                     let mut last_error = None;
                     let mut brightness_value = None;
 
-                    // Try up to 5 times with increasing delays
+                    // Try up to 5 times with delays for initial startup
                     for attempt in 1..=5 {
                         match backend.get_brightness() {
                             Ok(v) => {
@@ -75,8 +85,8 @@ pub async fn enumerate_displays(
                                 debug!("DDC/CI attempt {} failed: {}", attempt, e);
                                 last_error = Some(e);
                                 if attempt < 5 {
-                                    // Increase delay for each retry (100ms, 200ms, 300ms, 400ms)
-                                    let delay_ms = attempt as u64 * 100;
+                                    // Progressive delay for wake-up: 100ms, 150ms, 200ms, 250ms
+                                    let delay_ms = 50 + (attempt as u64 * 50);
                                     std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                                 }
                             }

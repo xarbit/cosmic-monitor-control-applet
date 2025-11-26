@@ -375,20 +375,19 @@ pub async fn spawn_if_needed(display_manager: crate::monitor::DisplayManager) {
         }
     };
 
-    // Try to acquire exclusive lock (non-blocking)
+    // Try to acquire exclusive lock (non-blocking) using flock
+    // flock is per-process, so multiple threads in same process can't conflict
     let lock_result = unsafe {
-        let mut flock = libc::flock {
-            l_type: libc::F_WRLCK as i16,
-            l_whence: libc::SEEK_SET as i16,
-            l_start: 0,
-            l_len: 0,
-            l_pid: 0,
-        };
-        libc::fcntl(lock_file.as_raw_fd(), libc::F_SETLK, &mut flock)
+        libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB)
     };
 
     if lock_result != 0 {
-        tracing::info!("Brightness sync daemon already running in another applet instance, skipping");
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+            tracing::info!("Brightness sync daemon already running in another applet instance, skipping");
+        } else {
+            tracing::error!("Failed to acquire daemon lock: {}", err);
+        }
         return;
     }
 
