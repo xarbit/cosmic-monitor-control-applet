@@ -66,7 +66,18 @@ Each protocol implements `DisplayProtocol` with `get_brightness()` and `set_brig
 
 - **DDC/CI**: Concurrent enumeration of `/dev/i2c-*` devices using `ddc-hi` library
 - **Apple HID**: USB device enumeration via `hidapi` with device-specific implementations in `src/devices/`
+- **Wayland Integration**: Correlates displays with COSMIC outputs via `cosmic-randr` for connector names
 - Runs asynchronously to prevent UI blocking during startup
+
+### Wayland Output Integration
+
+`src/randr.rs` integrates with `cosmic-randr-shell` to provide enhanced display information:
+
+- Queries Wayland outputs during enumeration to get connector names (DP-1, HDMI-2, USB-C, etc.)
+- Intelligent model name matching that strips manufacturer prefixes for reliable correlation
+- Displays connector names in UI: "Apple Studio Display (DP-3)"
+- Gracefully degrades if cosmic-randr is unavailable or fails
+- Only matches enabled outputs to avoid showing disabled displays
 
 ### Brightness Sync Daemon
 
@@ -174,6 +185,7 @@ Uses `tracing` with journald integration:
 Key runtime dependencies:
 
 - **libcosmic**: COSMIC desktop UI framework (from git)
+- **cosmic-randr-shell**: Wayland output information for connector names (from git)
 - **ddc-hi**: DDC/CI protocol implementation
 - **hidapi**: USB HID access (when `apple-hid-displays` enabled)
 - **zbus**: D-Bus communication for brightness sync daemon
