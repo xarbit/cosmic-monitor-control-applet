@@ -27,8 +27,8 @@ impl AppState {
             .spacing(space_xs)
             .padding(space_xxs);
 
-        debug!("Rendering profiles view: {} saved profiles, dialog_open={}",
-               self.config.profiles.len(), self.profile_dialog_open);
+        debug!("Rendering profiles view: {} saved profiles, dialog_open={}, profiles_expanded={}",
+               self.config.profiles.len(), self.profile_dialog_open, self.profiles_expanded);
 
         let at_max_profiles = self.config.profiles.len() >= MAX_PROFILES;
 

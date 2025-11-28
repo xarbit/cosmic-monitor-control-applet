@@ -232,6 +232,7 @@ impl AppState {
             }
             AppMsg::ToggleProfilesSection => {
                 self.profiles_expanded = !self.profiles_expanded;
+                info!("Toggled profiles_expanded to: {}", self.profiles_expanded);
             }
             AppMsg::OpenNewProfileDialog => {
                 self.profile_dialog_open = true;

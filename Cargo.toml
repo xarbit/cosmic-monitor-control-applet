@@ -42,6 +42,10 @@ kdl = "6.5.0"
 git = "https://github.com/pop-os/cosmic-randr"
 package = "cosmic-randr-shell"
 
+[dependencies.cosmic-randr]
+git = "https://github.com/pop-os/cosmic-randr"
+package = "cosmic-randr"
+
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
 # Using latest commit from main branch

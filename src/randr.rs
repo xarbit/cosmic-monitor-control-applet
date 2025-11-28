@@ -405,7 +405,15 @@ fn map_transform_to_randr(transform: &str) -> &str {
     }
 }
 
-/// Apply display scale via cosmic-randr
+/// Apply display scale via cosmic-randr CLI
+///
+/// Note: We use the CLI tool rather than the cosmic-randr library directly because:
+/// - The library requires maintaining a persistent Wayland connection with event queue
+/// - Complex async dispatch management (dispatch_until_manager_done, receive_config_messages)
+/// - For one-shot configuration changes, the CLI is simpler and more reliable
+///
+/// For future consideration: If we need to batch multiple display changes or react to
+/// display events, using the library's Context API would be more efficient.
 pub async fn apply_scale(connector_name: &str, current_mode: &DisplayMode, scale: f32) -> anyhow::Result<()> {
     info!("Applying scale {} to {}", scale, connector_name);
 
