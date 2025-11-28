@@ -66,8 +66,19 @@ pub fn find_matching_output(
     model_name: &str,
     outputs: &HashMap<String, OutputInfo>,
 ) -> Option<OutputInfo> {
-    // Extract just the model part (remove manufacturer prefix if present)
-    // e.g., "Apple Inc. Studio Display" -> "Studio Display"
+    // Extract manufacturer and model parts from the full name
+    // e.g., "Apple Inc. Studio Display" -> manufacturer: "Apple", model: "Studio Display"
+    let parts: Vec<&str> = model_name.split_whitespace().collect();
+    let manufacturer = if !parts.is_empty() &&
+        (parts[0].eq_ignore_ascii_case("Apple") ||
+         parts[0].eq_ignore_ascii_case("Dell") ||
+         parts[0].eq_ignore_ascii_case("LG") ||
+         parts[0].eq_ignore_ascii_case("Samsung")) {
+        Some(parts[0])
+    } else {
+        None
+    };
+
     let clean_model = model_name
         .split_whitespace()
         .filter(|word| {
@@ -84,20 +95,56 @@ pub fn find_matching_output(
         .collect::<Vec<_>>()
         .join(" ");
 
-    // First try exact model match (case-insensitive)
-    for output in outputs.values() {
-        if output.model.eq_ignore_ascii_case(&clean_model) {
-            debug!("Exact model match: {} -> {}", model_name, output.connector_name);
-            return Some(output.clone());
+    // First try exact match on both manufacturer and model (best match)
+    if let Some(mfr) = manufacturer {
+        for output in outputs.values() {
+            if output.enabled {
+                if let Some(ref output_make) = output.make {
+                    // Check if manufacturer matches (case-insensitive, substring match for "Apple Computer Inc" vs "Apple")
+                    if output_make.to_lowercase().contains(&mfr.to_lowercase()) &&
+                       output.model.eq_ignore_ascii_case(&clean_model) {
+                        debug!("Exact make+model match: {} -> {}", model_name, output.connector_name);
+                        return Some(output.clone());
+                    }
+                }
+            }
         }
     }
 
-    // Try partial match (model name contains or is contained in output model)
+    // Second try: exact model match only (case-insensitive) - only enabled outputs
+    // Also try without spaces for model names like "StudioDisplay" vs "Studio Display"
+    let clean_model_no_spaces = clean_model.replace(" ", "");
     for output in outputs.values() {
-        if output.model.to_lowercase().contains(&clean_model.to_lowercase())
-            || clean_model.to_lowercase().contains(&output.model.to_lowercase())
-        {
-            debug!("Partial model match: {} -> {}", model_name, output.connector_name);
+        if output.enabled {
+            let output_model_no_spaces = output.model.replace(" ", "");
+            if output.model.eq_ignore_ascii_case(&clean_model) ||
+               output_model_no_spaces.eq_ignore_ascii_case(&clean_model_no_spaces) {
+                debug!("Exact model match: {} -> {}", model_name, output.connector_name);
+                return Some(output.clone());
+            }
+        }
+    }
+
+    // Third try: partial match with manufacturer check
+    if let Some(mfr) = manufacturer {
+        for output in outputs.values() {
+            if output.enabled {
+                if let Some(ref output_make) = output.make {
+                    if output_make.to_lowercase().contains(&mfr.to_lowercase()) &&
+                       output.model.to_lowercase().contains(&clean_model.to_lowercase()) {
+                        debug!("Partial make+model match: {} -> {}", model_name, output.connector_name);
+                        return Some(output.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Last resort: try partial model-only match (output model contains our model)
+    // This prevents "StudioDisplay" from matching "Display"
+    for output in outputs.values() {
+        if output.enabled && output.model.to_lowercase().contains(&clean_model.to_lowercase()) {
+            debug!("Partial model match (output contains input): {} -> {}", model_name, output.connector_name);
             return Some(output.clone());
         }
     }
