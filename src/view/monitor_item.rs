@@ -85,6 +85,11 @@ impl AppState {
                     )
                     .push(horizontal_space())
                     .push(
+                        button::icon(icon::from_name("dialog-information-symbolic"))
+                            .padding(space_xxs)
+                            .on_press(AppMsg::ToggleMonInfo(id.to_string()))
+                    )
+                    .push(
                         button::icon(icon::from_name("emblem-system-symbolic"))
                             .padding(space_xxs)
                             .on_press(AppMsg::ToggleMonSettings(id.to_string()))
@@ -113,6 +118,9 @@ impl AppState {
             )
             .push_maybe(monitor.settings_expanded.then(|| {
                 monitor_settings_view(self, id, gamma_map)
+            }))
+            .push_maybe(monitor.info_expanded.then(|| {
+                monitor_info_view(self, id, monitor)
             }))
             .into()
     }
@@ -225,4 +233,137 @@ fn monitor_settings_view<'a>(
     .padding(12)
     .class(cosmic::style::Container::Card)
     .into()
+}
+
+/// Monitor information view showing all display details
+fn monitor_info_view<'a>(
+    _app_state: &AppState,
+    id: &'a str,
+    monitor: &'a MonitorState,
+) -> Element<'a, AppMsg> {
+    let cosmic_theme::Spacing {
+        space_xxs,
+        space_xs,
+        ..
+    } = theme::spacing();
+
+    let mut info_column = column().spacing(space_xs);
+
+    // Display Name
+    info_column = info_column.push(
+        row()
+            .spacing(space_xs)
+            .push(text("Display Name:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+            .push(text(&monitor.name).size(11))
+    );
+
+    // Display ID
+    info_column = info_column.push(
+        row()
+            .spacing(space_xs)
+            .push(text("Display ID:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+            .push(text(id).size(11))
+    );
+
+    // Connector
+    if let Some(ref connector) = monitor.connector_name {
+        info_column = info_column.push(
+            row()
+                .spacing(space_xs)
+                .push(text("Connector:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                .push(text(connector).size(11))
+        );
+    }
+
+    // Output info from cosmic-randr (if available)
+    if let Some(ref output_info) = monitor.output_info {
+        // Manufacturer
+        if let Some(ref make) = output_info.make {
+            info_column = info_column.push(
+                row()
+                    .spacing(space_xs)
+                    .push(text("Manufacturer:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                    .push(text(make).size(11))
+            );
+        }
+
+        // Serial Number
+        if let Some(ref serial) = output_info.serial_number {
+            info_column = info_column.push(
+                row()
+                    .spacing(space_xs)
+                    .push(text("Serial Number:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                    .push(text(serial).size(11))
+            );
+        }
+
+        // Physical Size
+        let (width_mm, height_mm) = output_info.physical_size;
+        if width_mm > 0 && height_mm > 0 {
+            let diagonal_mm = ((width_mm.pow(2) + height_mm.pow(2)) as f64).sqrt();
+            let diagonal_inch = diagonal_mm / 25.4;
+            info_column = info_column.push(
+                row()
+                    .spacing(space_xs)
+                    .push(text("Physical Size:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                    .push(text(format!("{}mm × {}mm ({:.1}\")", width_mm, height_mm, diagonal_inch)).size(11))
+            );
+        }
+
+        // Resolution and Refresh Rate
+        if let Some(ref mode) = output_info.current_mode {
+            let refresh_hz = mode.refresh_rate as f64 / 1000.0;
+            info_column = info_column.push(
+                row()
+                    .spacing(space_xs)
+                    .push(text("Resolution:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                    .push(text(format!("{} × {} @ {:.0}Hz", mode.width, mode.height, refresh_hz)).size(11))
+            );
+        }
+
+        // Scale
+        info_column = info_column.push(
+            row()
+                .spacing(space_xs)
+                .push(text("Scale:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                .push(text(format!("{:.2}×", output_info.scale)).size(11))
+        );
+
+        // Transform/Rotation
+        info_column = info_column.push(
+            row()
+                .spacing(space_xs)
+                .push(text("Rotation:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                .push(text(&output_info.transform).size(11))
+        );
+
+        // Position
+        let (x, y) = output_info.position;
+        info_column = info_column.push(
+            row()
+                .spacing(space_xs)
+                .push(text("Position:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                .push(text(format!("({}, {})", x, y)).size(11))
+        );
+
+        // Enabled status
+        info_column = info_column.push(
+            row()
+                .spacing(space_xs)
+                .push(text("Status:").size(11).class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6))))
+                .push(text(if output_info.enabled { "Enabled" } else { "Disabled" }).size(11))
+        );
+    } else {
+        // No cosmic-randr info available
+        info_column = info_column.push(
+            text("(cosmic-randr information not available)")
+                .size(11)
+                .class(cosmic::theme::Text::Color(cosmic::iced::Color::from_rgb(0.6, 0.6, 0.6)))
+        );
+    }
+
+    container(info_column)
+        .padding(space_xxs)
+        .class(cosmic::style::Container::Card)
+        .into()
 }
