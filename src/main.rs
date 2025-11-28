@@ -76,5 +76,8 @@ fn main() -> cosmic::iced::Result {
         }
     };
 
+    // Check for old config format and log migration warning
+    config.check_migration_needed();
+
     cosmic::applet::run::<AppState>((config_handler, config))
 }

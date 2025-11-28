@@ -11,7 +11,7 @@ use crate::{
     monitor::DisplayId,
 };
 
-pub const CONFIG_VERSION: u64 = 1;
+pub const CONFIG_VERSION: u64 = 2;
 pub const MAX_PROFILES: usize = 10;
 
 /// A brightness profile stores brightness values for all monitors
@@ -80,6 +80,41 @@ impl MonitorConfig {
 }
 
 impl Config {
+    /// Check if config contains old I2C-based DDC IDs and log migration warning
+    pub fn check_migration_needed(&self) {
+        // Detect old I2C-based IDs (numeric strings like "22789")
+        let has_old_ddc_ids = self.monitors.keys()
+            .any(|id| !id.starts_with("ddc-") && !id.starts_with("apple-hid-") && id.parse::<u64>().is_ok())
+            || self.profiles.iter()
+            .any(|p| p.brightness_values.keys()
+                .any(|id| !id.starts_with("ddc-") && !id.starts_with("apple-hid-") && id.parse::<u64>().is_ok()));
+
+        if has_old_ddc_ids {
+            warn!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            warn!("⚠️  CONFIGURATION UPDATE DETECTED");
+            warn!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            warn!("");
+            warn!("DDC/CI display IDs have been updated to use stable serial numbers.");
+            warn!("Your existing monitor settings and profiles use the old format and");
+            warn!("may not work correctly.");
+            warn!("");
+            warn!("What changed:");
+            warn!("  • Old IDs: 22789, 22790 (unstable, changed on reboot)");
+            warn!("  • New IDs: ddc-0x112E647C (stable, based on EDID serial)");
+            warn!("");
+            warn!("Action required:");
+            warn!("  1. Your monitors will work, but settings may not apply");
+            warn!("  2. Reconfigure per-monitor settings (gamma, sync, min brightness)");
+            warn!("  3. Recreate any saved brightness profiles");
+            warn!("");
+            warn!("To start fresh, delete old config:");
+            warn!("  rm -rf ~/.config/{}", APPID);
+            warn!("");
+            warn!("This is a one-time migration due to architectural improvements.");
+            warn!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        }
+    }
+
     pub fn get_gamma_map(&self, id: &str) -> f32 {
         self.monitors.get(id).map(|m| m.gamma_map).unwrap_or_else(|| {
             // Default gamma based on display type
