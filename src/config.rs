@@ -14,12 +14,21 @@ use crate::{
 pub const CONFIG_VERSION: u64 = 2;
 pub const MAX_PROFILES: usize = 10;
 
-/// A brightness profile stores brightness values for all monitors
+/// A brightness profile stores brightness values and display settings for all monitors
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct BrightnessProfile {
     pub name: String,
     /// Map of display_id -> brightness (0-100)
     pub brightness_values: HashMap<DisplayId, u16>,
+    /// Map of display_id -> scale factor
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub scale_values: HashMap<DisplayId, f32>,
+    /// Map of display_id -> transform/rotation
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub transform_values: HashMap<DisplayId, String>,
+    /// Map of display_id -> position (x, y)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub position_values: HashMap<DisplayId, (i32, i32)>,
 }
 
 impl BrightnessProfile {
@@ -27,6 +36,9 @@ impl BrightnessProfile {
         Self {
             name,
             brightness_values,
+            scale_values: HashMap::new(),
+            transform_values: HashMap::new(),
+            position_values: HashMap::new(),
         }
     }
 }
@@ -50,6 +62,15 @@ pub struct MonitorConfig {
     /// Minimum brightness percentage (0-100) that will be sent to hardware
     #[serde(default = "default_min_brightness")]
     pub min_brightness: u16,
+    /// Display scale factor (1.0, 1.5, 2.0, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f32>,
+    /// Display transform/rotation (normal, 90, 180, 270, flipped, etc.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform: Option<String>,
+    /// Display position (x, y) in virtual desktop
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<(i32, i32)>,
 }
 
 fn default_sync_enabled() -> bool {
@@ -66,6 +87,9 @@ impl MonitorConfig {
             gamma_map: 1.,
             sync_with_brightness_keys: true,
             min_brightness: 0,
+            scale: None,
+            transform: None,
+            position: None,
         }
     }
 
@@ -75,6 +99,9 @@ impl MonitorConfig {
             gamma_map: gamma,
             sync_with_brightness_keys: true,
             min_brightness: 0,
+            scale: None,
+            transform: None,
+            position: None,
         }
     }
 }
