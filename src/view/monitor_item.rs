@@ -29,7 +29,15 @@ impl AppState {
 
         (!self.monitors.is_empty()).then(|| {
             let mut monitors: Vec<_> = self.monitors.iter().collect();
-            monitors.sort_by_key(|(id, _)| *id);
+
+            // Sort monitors by X position (left to right), falling back to ID if no position available
+            monitors.sort_by(|(id_a, mon_a), (id_b, mon_b)| {
+                let x_a = mon_a.output_info.as_ref().map(|info| info.position.0).unwrap_or(i32::MAX);
+                let x_b = mon_b.output_info.as_ref().map(|info| info.position.0).unwrap_or(i32::MAX);
+
+                // Sort by X position first, then by ID as tiebreaker
+                x_a.cmp(&x_b).then_with(|| id_a.cmp(id_b))
+            });
 
             column()
                 .padding(space_xs)
