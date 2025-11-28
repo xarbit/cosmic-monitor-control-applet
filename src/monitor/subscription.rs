@@ -117,6 +117,26 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                         failed_attempts += 1;
                     }
 
+                    // Query cosmic-randr to get connector names for all displays (including cached)
+                    if !res.is_empty() {
+                        match crate::randr::get_outputs().await {
+                            Ok(outputs) => {
+                                for (id, mon) in res.iter_mut() {
+                                    if mon.connector_name.is_none() {
+                                        if let Some(output_info) = crate::randr::find_matching_output(&mon.name, &outputs) {
+                                            if output_info.enabled {
+                                                mon.connector_name = Some(output_info.connector_name);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                debug!("Failed to query cosmic-randr for cached displays: {}", e);
+                            }
+                        }
+                    }
+
                     // If we have at least one monitor, send it to the UI immediately
                     // and retry failed monitors in the background
                     if !res.is_empty() {
