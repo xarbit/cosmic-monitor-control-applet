@@ -10,6 +10,15 @@ use std::collections::HashMap;
 use std::process::Command;
 use tracing::{debug, error, info, warn};
 
+/// Display mode information (resolution and refresh rate)
+#[derive(Debug, Clone)]
+pub struct DisplayMode {
+    pub width: u32,
+    pub height: u32,
+    /// Refresh rate in millihertz (60000 = 60Hz)
+    pub refresh_rate: u32,
+}
+
 /// Information about a Wayland output from cosmic-randr
 #[derive(Debug, Clone)]
 pub struct OutputInfo {
@@ -25,12 +34,30 @@ pub struct OutputInfo {
     pub enabled: bool,
     /// Physical size in millimeters
     pub physical_size: (u32, u32),
+    /// Display position (x, y) in virtual desktop
+    pub position: (i32, i32),
+    /// HiDPI scale factor (1.0, 1.5, 2.0, etc.)
+    pub scale: f32,
+    /// Transform/rotation (normal, 90, 180, 270, flipped, etc.)
+    pub transform: String,
+    /// Current display mode (resolution and refresh rate)
+    pub current_mode: Option<DisplayMode>,
 }
 
-/// Parse serial numbers from cosmic-randr KDL output
-/// Returns a map of connector name -> serial number
-fn parse_serial_numbers_from_kdl() -> HashMap<String, String> {
-    let mut serials = HashMap::new();
+/// Additional output information parsed from KDL
+#[derive(Debug, Clone, Default)]
+struct KdlOutputInfo {
+    serial_number: Option<String>,
+    position: Option<(i32, i32)>,
+    scale: Option<f32>,
+    transform: Option<String>,
+    current_mode: Option<DisplayMode>,
+}
+
+/// Parse additional output information from cosmic-randr KDL output
+/// Returns a map of connector name -> KdlOutputInfo
+fn parse_kdl_output_info() -> HashMap<String, KdlOutputInfo> {
+    let mut outputs = HashMap::new();
 
     // Run cosmic-randr list --kdl
     let output = match Command::new("cosmic-randr")
@@ -40,20 +67,20 @@ fn parse_serial_numbers_from_kdl() -> HashMap<String, String> {
         Ok(out) => out,
         Err(e) => {
             warn!("Failed to run cosmic-randr list --kdl: {}", e);
-            return serials;
+            return outputs;
         }
     };
 
     if !output.status.success() {
         warn!("cosmic-randr list --kdl failed with status: {}", output.status);
-        return serials;
+        return outputs;
     }
 
     let kdl_str = match String::from_utf8(output.stdout) {
         Ok(s) => s,
         Err(e) => {
             warn!("Failed to parse cosmic-randr output as UTF-8: {}", e);
-            return serials;
+            return outputs;
         }
     };
 
@@ -62,35 +89,107 @@ fn parse_serial_numbers_from_kdl() -> HashMap<String, String> {
         Ok(d) => d,
         Err(e) => {
             warn!("Failed to parse KDL document: {}", e);
-            return serials;
+            return outputs;
         }
     };
 
-    // Extract serial numbers from each output node
+    // Extract information from each output node
     for node in doc.nodes() {
         if node.name().value() == "output" {
             // Get connector name from first entry
             if let Some(connector) = node.entries().first() {
                 if let Some(connector_name) = connector.value().as_string() {
-                    // Look for serial_number child node
+                    let mut info = KdlOutputInfo::default();
+
+                    // Look for child nodes with display info
                     if let Some(children) = node.children() {
                         for child in children.nodes() {
-                            if child.name().value() == "serial_number" {
-                                if let Some(serial_entry) = child.entries().first() {
-                                    if let Some(serial) = serial_entry.value().as_string() {
-                                        debug!("Found serial for {}: {}", connector_name, serial);
-                                        serials.insert(connector_name.to_string(), serial.to_string());
+                            match child.name().value() {
+                                "serial_number" => {
+                                    if let Some(serial_entry) = child.entries().first() {
+                                        if let Some(serial) = serial_entry.value().as_string() {
+                                            info.serial_number = Some(serial.to_string());
+                                        }
                                     }
                                 }
+                                "position" => {
+                                    // position x y
+                                    if let (Some(x_entry), Some(y_entry)) = (child.entries().get(0), child.entries().get(1)) {
+                                        // Try to parse as integer
+                                        let x = x_entry.value().as_integer().map(|i| i as i32);
+                                        let y = y_entry.value().as_integer().map(|i| i as i32);
+                                        if let (Some(x), Some(y)) = (x, y) {
+                                            info.position = Some((x, y));
+                                        }
+                                    }
+                                }
+                                "scale" => {
+                                    // scale 2.00
+                                    if let Some(scale_entry) = child.entries().first() {
+                                        // Try as float first, then as integer
+                                        let scale = if let Some(f) = scale_entry.value().as_float() {
+                                            Some(f as f32)
+                                        } else if let Some(i) = scale_entry.value().as_integer() {
+                                            Some(i as f32)
+                                        } else {
+                                            None
+                                        };
+                                        if let Some(scale) = scale {
+                                            info.scale = Some(scale);
+                                        }
+                                    }
+                                }
+                                "transform" => {
+                                    // transform "normal"
+                                    if let Some(transform_entry) = child.entries().first() {
+                                        if let Some(transform) = transform_entry.value().as_string() {
+                                            info.transform = Some(transform.to_string());
+                                        }
+                                    }
+                                }
+                                "modes" => {
+                                    // Find the current mode
+                                    if let Some(mode_children) = child.children() {
+                                        for mode_node in mode_children.nodes() {
+                                            if mode_node.name().value() == "mode" {
+                                                // Check if this is the current mode
+                                                let is_current = mode_node.entries().iter()
+                                                    .any(|e| e.name().map_or(false, |n| n.value() == "current")
+                                                              && e.value().as_bool() == Some(true));
+
+                                                if is_current {
+                                                    // mode width height refresh_rate current=#true
+                                                    if let (Some(w), Some(h), Some(r)) = (
+                                                        mode_node.entries().get(0).and_then(|e| e.value().as_integer()),
+                                                        mode_node.entries().get(1).and_then(|e| e.value().as_integer()),
+                                                        mode_node.entries().get(2).and_then(|e| e.value().as_integer()),
+                                                    ) {
+                                                        info.current_mode = Some(DisplayMode {
+                                                            width: w as u32,
+                                                            height: h as u32,
+                                                            refresh_rate: r as u32,
+                                                        });
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
+
+                    debug!("Parsed KDL info for {}: serial={:?}, pos={:?}, scale={:?}, transform={:?}, mode={:?}",
+                           connector_name, info.serial_number, info.position, info.scale, info.transform, info.current_mode);
+                    outputs.insert(connector_name.to_string(), info);
                 }
             }
         }
     }
 
-    serials
+    outputs
 }
 
 /// Fetches all Wayland output information from cosmic-randr
@@ -102,33 +201,39 @@ pub async fn get_outputs() -> Result<HashMap<String, OutputInfo>, Box<dyn std::e
         e
     })?;
 
-    // Parse serial numbers from KDL format
-    let serial_numbers = parse_serial_numbers_from_kdl();
+    // Parse additional output information from KDL format
+    let kdl_info = parse_kdl_output_info();
 
     let mut outputs = HashMap::new();
 
-    for (key, output) in list.outputs.iter() {
-        let serial = serial_numbers.get(&output.name).cloned();
+    for (_key, output) in list.outputs.iter() {
+        // Get KDL-parsed info for this output (if available)
+        let kdl = kdl_info.get(&output.name);
 
         debug!(
             "Found Wayland output: {} (enabled: {}, model: {}, serial: {:?})",
-            output.name, output.enabled, output.model, serial
+            output.name, output.enabled, output.model, kdl.and_then(|k| k.serial_number.as_ref())
         );
 
         let info = OutputInfo {
             connector_name: output.name.clone(),
             make: output.make.clone(),
             model: output.model.clone(),
-            serial_number: serial,
+            serial_number: kdl.and_then(|k| k.serial_number.clone()),
             enabled: output.enabled,
             physical_size: output.physical,
+            position: kdl.and_then(|k| k.position).unwrap_or((0, 0)),
+            scale: kdl.and_then(|k| k.scale).unwrap_or(1.0),
+            transform: kdl.and_then(|k| k.transform.clone()).unwrap_or_else(|| "normal".to_string()),
+            current_mode: kdl.and_then(|k| k.current_mode.clone()),
         };
 
         outputs.insert(output.name.clone(), info);
     }
 
+    let serial_count = outputs.values().filter(|o| o.serial_number.is_some()).count();
     info!("Found {} Wayland output(s) from cosmic-randr ({} with serial numbers)",
-          outputs.len(), serial_numbers.len());
+          outputs.len(), serial_count);
     Ok(outputs)
 }
 
@@ -298,6 +403,10 @@ mod tests {
                 serial_number: Some("0x112E647C".to_string()),
                 enabled: false,
                 physical_size: (600, 330),
+                position: (0, 0),
+                scale: 2.0,
+                transform: "normal".to_string(),
+                current_mode: Some(DisplayMode { width: 5120, height: 2880, refresh_rate: 60000 }),
             },
         );
 
@@ -310,6 +419,10 @@ mod tests {
                 serial_number: Some("0x112E647D".to_string()),
                 enabled: true,
                 physical_size: (600, 330),
+                position: (1280, 0),
+                scale: 2.0,
+                transform: "normal".to_string(),
+                current_mode: Some(DisplayMode { width: 5120, height: 2880, refresh_rate: 60000 }),
             },
         );
 
