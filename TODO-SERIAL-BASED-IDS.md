@@ -179,17 +179,47 @@ Use EDID serial numbers from cosmic-randr correlation:
 - [x] Serial number extraction from cosmic-randr (implemented)
 - [x] Serial number matching infrastructure (implemented)
 - [x] Add edid_serial to MonitorInfo struct (completed)
-- [ ] Fix MonitorInfo constructor call sites
-- [ ] Implement early randr correlation in enumeration
-- [ ] Modify DDC/CI ID generation to use serials
-- [ ] Implement config migration strategy
-- [ ] Add user notification for migration
-- [ ] Comprehensive testing
+- [x] Fix MonitorInfo constructor call sites (completed - commit 9e427a3)
+- [x] Implement early randr correlation in enumeration (completed - commit 9e427a3)
+- [x] Modify DDC/CI ID generation to use serials (completed - commit 9e427a3)
+- [x] Implement config migration strategy (completed - commit a458b96)
+- [x] Add user notification for migration (completed - migrations.rs)
+- [ ] Comprehensive testing (in progress)
 
 ## References
 
 - cosmic-randr integration: Commit 781081a
+- Serial number-based IDs: Commit 9e427a3
+- Config migration: Commits a458b96, ae8453b
+- Migration module: `src/migrations.rs`
 - Serial matching: `src/randr.rs` lines 149-256
 - Current ID generation:
-  - DDC: `src/protocols/ddc_ci.rs` line 37
+  - DDC: `src/protocols/ddc_ci.rs` line 49-58
   - Apple HID: `src/protocols/apple_hid/device.rs` line 200
+
+## Implementation Summary (December 2024)
+
+All core features have been successfully implemented:
+
+**Stable Display IDs**:
+- DDC/CI displays now use `ddc-{serial}` format (e.g., `ddc-0x112E647C`)
+- Apple HID unchanged: `apple-hid-{usb_serial}`
+- Fallback to old I2C IDs with warnings if serial unavailable
+
+**Architecture**:
+- Early cosmic-randr query in enumeration (before backend creation)
+- EDID serials extracted from KDL format via `cosmic-randr list --kdl`
+- Serial passed to DdcCiDisplay via `set_edid_serial()` before `id()` call
+- Multi-tier matching ensures correct serial assignment
+
+**Migration**:
+- Config version bumped to 2
+- Dedicated `migrations.rs` module for clean separation
+- Detects old numeric IDs and logs comprehensive warning
+- Clean break strategy (no auto-migration)
+
+**Testing Remaining**:
+- Verify profile persistence across reboot
+- Test hotplug with new stable IDs
+- Confirm settings (gamma, sync, min brightness) survive reboot
+- Multi-monitor scenarios with identical models
