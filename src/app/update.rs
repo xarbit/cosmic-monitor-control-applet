@@ -96,22 +96,78 @@ impl AppState {
                 self.update_monitor_config(&id, |monitor| {
                     monitor.scale = Some(scale);
                 });
-                // TODO: Execute cosmic-randr command to apply scale
-                info!("Set scale for {}: {}", id, scale);
+
+                // Apply scale via cosmic-randr if we have the necessary info
+                if let Some(monitor) = self.monitors.get(&id) {
+                    if let Some(ref output_info) = monitor.output_info {
+                        if let Some(ref mode) = output_info.current_mode {
+                            let connector = output_info.connector_name.clone();
+                            let mode_clone = mode.clone();
+
+                            tokio::spawn(async move {
+                                if let Err(e) = crate::randr::apply_scale(&connector, &mode_clone, scale).await {
+                                    error!("Failed to apply scale to {}: {}", connector, e);
+                                }
+                            });
+                        } else {
+                            warn!("Cannot apply scale to {}: no current mode available", id);
+                        }
+                    } else {
+                        warn!("Cannot apply scale to {}: no output info available", id);
+                    }
+                } else {
+                    warn!("Monitor {} not found", id);
+                }
             }
             AppMsg::SetMonTransform(id, transform) => {
                 self.update_monitor_config(&id, |monitor| {
                     monitor.transform = Some(transform.clone());
                 });
-                // TODO: Execute cosmic-randr command to apply transform
-                info!("Set transform for {}: {}", id, transform);
+
+                // Apply transform via cosmic-randr if we have the necessary info
+                if let Some(monitor) = self.monitors.get(&id) {
+                    if let Some(ref output_info) = monitor.output_info {
+                        if let Some(ref mode) = output_info.current_mode {
+                            let connector = output_info.connector_name.clone();
+                            let mode_clone = mode.clone();
+                            let transform_clone = transform.clone();
+
+                            tokio::spawn(async move {
+                                if let Err(e) = crate::randr::apply_transform(&connector, &mode_clone, &transform_clone).await {
+                                    error!("Failed to apply transform to {}: {}", connector, e);
+                                }
+                            });
+                        } else {
+                            warn!("Cannot apply transform to {}: no current mode available", id);
+                        }
+                    } else {
+                        warn!("Cannot apply transform to {}: no output info available", id);
+                    }
+                } else {
+                    warn!("Monitor {} not found", id);
+                }
             }
             AppMsg::SetMonPosition(id, x, y) => {
                 self.update_monitor_config(&id, |monitor| {
                     monitor.position = Some((x, y));
                 });
-                // TODO: Execute cosmic-randr command to apply position
-                info!("Set position for {}: ({}, {})", id, x, y);
+
+                // Apply position via cosmic-randr if we have the necessary info
+                if let Some(monitor) = self.monitors.get(&id) {
+                    if let Some(ref output_info) = monitor.output_info {
+                        let connector = output_info.connector_name.clone();
+
+                        tokio::spawn(async move {
+                            if let Err(e) = crate::randr::apply_position(&connector, x, y).await {
+                                error!("Failed to apply position to {}: {}", connector, e);
+                            }
+                        });
+                    } else {
+                        warn!("Cannot apply position to {}: no output info available", id);
+                    }
+                } else {
+                    warn!("Monitor {} not found", id);
+                }
             }
             AppMsg::SetMonitorSyncEnabled(id, enabled) => {
                 self.update_monitor_config(&id, |monitor| {

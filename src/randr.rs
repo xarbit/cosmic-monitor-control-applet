@@ -387,6 +387,98 @@ pub fn find_output_by_make_model(
     find_matching_output(model, outputs)
 }
 
+/// Helper to map our rotation format to cosmic-randr transform format
+fn map_transform_to_randr(transform: &str) -> &str {
+    match transform {
+        "normal" => "normal",
+        "90" => "rotate90",
+        "180" => "rotate180",
+        "270" => "rotate270",
+        "flipped" => "flipped",
+        "flipped-90" => "flipped90",
+        "flipped-180" => "flipped180",
+        "flipped-270" => "flipped270",
+        _ => {
+            warn!("Unknown transform '{}', defaulting to 'normal'", transform);
+            "normal"
+        }
+    }
+}
+
+/// Apply display scale via cosmic-randr
+pub async fn apply_scale(connector_name: &str, current_mode: &DisplayMode, scale: f32) -> anyhow::Result<()> {
+    info!("Applying scale {} to {}", scale, connector_name);
+
+    let output = tokio::process::Command::new("cosmic-randr")
+        .args([
+            "mode",
+            connector_name,
+            &current_mode.width.to_string(),
+            &current_mode.height.to_string(),
+            "--scale",
+            &scale.to_string(),
+        ])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to apply scale: {}", stderr);
+    }
+
+    info!("Successfully applied scale {} to {}", scale, connector_name);
+    Ok(())
+}
+
+/// Apply display transform/rotation via cosmic-randr
+pub async fn apply_transform(connector_name: &str, current_mode: &DisplayMode, transform: &str) -> anyhow::Result<()> {
+    let randr_transform = map_transform_to_randr(transform);
+    info!("Applying transform {} (cosmic-randr: {}) to {}", transform, randr_transform, connector_name);
+
+    let output = tokio::process::Command::new("cosmic-randr")
+        .args([
+            "mode",
+            connector_name,
+            &current_mode.width.to_string(),
+            &current_mode.height.to_string(),
+            "--transform",
+            randr_transform,
+        ])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to apply transform: {}", stderr);
+    }
+
+    info!("Successfully applied transform {} to {}", transform, connector_name);
+    Ok(())
+}
+
+/// Apply display position via cosmic-randr
+pub async fn apply_position(connector_name: &str, x: i32, y: i32) -> anyhow::Result<()> {
+    info!("Applying position ({}, {}) to {}", x, y, connector_name);
+
+    let output = tokio::process::Command::new("cosmic-randr")
+        .args([
+            "position",
+            connector_name,
+            &x.to_string(),
+            &y.to_string(),
+        ])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to apply position: {}", stderr);
+    }
+
+    info!("Successfully applied position ({}, {}) to {}", x, y, connector_name);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
