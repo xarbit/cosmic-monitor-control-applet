@@ -11,7 +11,7 @@ use crate::{
     monitor::DisplayId,
 };
 
-pub const CONFIG_VERSION: u64 = 1;
+pub const CONFIG_VERSION: u64 = 2;
 pub const MAX_PROFILES: usize = 10;
 
 /// A brightness profile stores brightness values for all monitors

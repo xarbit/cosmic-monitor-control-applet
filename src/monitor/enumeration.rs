@@ -25,14 +25,45 @@ pub async fn enumerate_displays(
 
     info!("=== START ENUMERATE (known displays: {}) ===", known_ids.len());
 
+    // Query cosmic-randr EARLY to get serial numbers for correlation
+    let randr_outputs = match crate::randr::get_outputs().await {
+        Ok(outputs) => {
+            info!("Found {} Wayland output(s) from cosmic-randr (early query)", outputs.len());
+            Some(outputs)
+        }
+        Err(e) => {
+            warn!("Failed to query cosmic-randr early: {}", e);
+            None
+        }
+    };
+
     // Enumerate DDC/CI displays concurrently
     let ddc_displays = DdcCiDisplay::enumerate();
     info!("Found {} DDC/CI display(s) total", ddc_displays.len());
     let mut ddc_tasks = Vec::new();
 
-    for display in ddc_displays {
-        // Get display ID before moving it
+    for mut display in ddc_displays {
+        // Try to match with cosmic-randr output and set serial number BEFORE getting ID
+        if let Some(ref outputs) = randr_outputs {
+            let model_name = display.name();
+            if let Some(output_info) = crate::randr::find_matching_output(&model_name, outputs) {
+                if output_info.enabled {
+                    if let Some(ref serial) = output_info.serial_number {
+                        debug!("Setting EDID serial for DDC display '{}': {}", model_name, serial);
+                        display.set_edid_serial(Some(serial.clone()));
+                    }
+                }
+            }
+        }
+
+        // Get display ID after setting serial number
         let id = display.id();
+
+        // Warn if using unstable I2C-based ID (no serial number)
+        if !id.starts_with("ddc-") {
+            warn!("DDC/CI display '{}' using unstable I2C-based ID: {} - settings may not persist across reboots",
+                  display.name(), id);
+        }
 
         // Skip displays that are already in cache
         if known_ids.contains(&id) {
@@ -40,7 +71,7 @@ pub async fn enumerate_displays(
             continue;
         }
 
-        info!("Probing new DDC/CI display: {}", id);
+        info!("Probing new DDC/CI display: {} (ID: {})", display.name(), id);
         let task = tokio::spawn(async move {
             // Run blocking I/O operations in spawn_blocking to avoid blocking the runtime
             tokio::task::spawn_blocking(move || {
@@ -126,6 +157,8 @@ pub async fn enumerate_displays(
                 let mon = MonitorInfo {
                     name,
                     brightness,
+                    connector_name: None,
+                    edid_serial: None,
                 };
 
                 Ok((id, mon, backend))
@@ -191,6 +224,8 @@ pub async fn enumerate_displays(
                                 let mon = MonitorInfo {
                                     name,
                                     brightness,
+                                    connector_name: None,
+                                    edid_serial: None,
                                 };
 
                                 results.push((id, mon, backend));
@@ -216,6 +251,53 @@ pub async fn enumerate_displays(
     }
 
     info!("=== END ENUMERATE: Found {} monitors ===", res.len());
+
+    // Correlate displays with Wayland outputs from cosmic-randr
+    // Reuse randr_outputs if we already fetched it, or query now for Apple HID displays
+    if !res.is_empty() {
+        let outputs = match randr_outputs {
+            Some(outputs) => Some(outputs),
+            None => {
+                match crate::randr::get_outputs().await {
+                    Ok(outputs) => {
+                        info!("Found {} Wayland output(s) from cosmic-randr (late query)", outputs.len());
+                        Some(outputs)
+                    }
+                    Err(e) => {
+                        warn!("Failed to query cosmic-randr for output info: {}", e);
+                        None
+                    }
+                }
+            }
+        };
+
+        if let Some(outputs) = outputs {
+            // Try to match each display with a Wayland output
+            for (id, mon) in res.iter_mut() {
+                // Only populate connector_name and edid_serial if not already set
+                if mon.connector_name.is_none() || mon.edid_serial.is_none() {
+                    if let Some(output_info) = crate::randr::find_matching_output(&mon.name, &outputs) {
+                        if output_info.enabled {
+                            info!("Matched display '{}' ({}) to connector '{}' (serial: {:?})",
+                                mon.name, id, output_info.connector_name, output_info.serial_number);
+                            if mon.connector_name.is_none() {
+                                mon.connector_name = Some(output_info.connector_name);
+                            }
+                            if mon.edid_serial.is_none() {
+                                mon.edid_serial = output_info.serial_number.clone();
+                            }
+                        } else {
+                            debug!("Found match for '{}' but output is disabled", mon.name);
+                        }
+                    } else {
+                        debug!("No matching Wayland output found for display: {} ({})", mon.name, id);
+                    }
+                }
+            }
+        } else {
+            debug!("Display connector names and serials will not be available");
+        }
+    }
 
     (res, displays, some_failed)
 }

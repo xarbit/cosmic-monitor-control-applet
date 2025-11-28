@@ -83,7 +83,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                         match check_result {
                             Ok(Ok(Some((name, brightness)))) => {
                                 // Display is alive and responsive
-                                res.insert(id.clone(), super::backend::MonitorInfo { name, brightness });
+                                res.insert(id.clone(), super::backend::MonitorInfo { name, brightness, connector_name: None, edid_serial: None });
                                 all_displays.insert(id.clone(), backend.clone());
                                 if is_re_enumerate {
                                     info!("Using cached display (quick read): {} (brightness: {})", id, brightness);
@@ -115,6 +115,31 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
 
                     if some_failed {
                         failed_attempts += 1;
+                    }
+
+                    // Query cosmic-randr to get connector names and serial numbers for all displays (including cached)
+                    if !res.is_empty() {
+                        match crate::randr::get_outputs().await {
+                            Ok(outputs) => {
+                                for (_id, mon) in res.iter_mut() {
+                                    if mon.connector_name.is_none() || mon.edid_serial.is_none() {
+                                        if let Some(output_info) = crate::randr::find_matching_output(&mon.name, &outputs) {
+                                            if output_info.enabled {
+                                                if mon.connector_name.is_none() {
+                                                    mon.connector_name = Some(output_info.connector_name);
+                                                }
+                                                if mon.edid_serial.is_none() {
+                                                    mon.edid_serial = output_info.serial_number.clone();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                debug!("Failed to query cosmic-randr for cached displays: {}", e);
+                            }
+                        }
                     }
 
                     // If we have at least one monitor, send it to the UI immediately

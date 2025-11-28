@@ -8,3 +8,6 @@
 # Flatpak build files
 .flatpak-builder/
 flatpak-cargo-generator.py
+
+# Development TODO files
+TODO-*.md

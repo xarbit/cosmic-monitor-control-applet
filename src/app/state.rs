@@ -17,6 +17,7 @@ pub struct MonitorState {
     /// Between 0 and 1
     pub slider_brightness: f32,
     pub settings_expanded: bool,
+    pub connector_name: Option<String>,
 }
 
 pub fn get_mapped_brightness(slider_brightness: f32, gamma: f32) -> u16 {
@@ -156,6 +157,7 @@ impl AppState {
                             self.config.get_gamma_map(&id),
                         ),
                         settings_expanded: false,
+                        connector_name: m.connector_name,
                     },
                 )
             })

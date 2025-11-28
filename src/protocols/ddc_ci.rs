@@ -15,12 +15,25 @@ const BRIGHTNESS_CODE: u8 = 0x10;
 /// DDC/CI display implementation
 pub struct DdcCiDisplay {
     display: Display,
+    /// EDID serial number from cosmic-randr (if available)
+    /// Used to generate stable display IDs that persist across reboots
+    edid_serial: Option<String>,
 }
 
 impl DdcCiDisplay {
     /// Create a new DDC/CI display wrapper
     pub fn new(display: Display) -> Self {
-        Self { display }
+        Self { display, edid_serial: None }
+    }
+
+    /// Create a new DDC/CI display wrapper with an EDID serial number
+    pub fn new_with_serial(display: Display, edid_serial: Option<String>) -> Self {
+        Self { display, edid_serial }
+    }
+
+    /// Set the EDID serial number (used to generate stable display IDs)
+    pub fn set_edid_serial(&mut self, serial: Option<String>) {
+        self.edid_serial = serial;
     }
 
     /// Enumerate all DDC/CI displays
@@ -34,7 +47,14 @@ impl DdcCiDisplay {
 
 impl DisplayProtocol for DdcCiDisplay {
     fn id(&self) -> String {
-        self.display.info.id.clone()
+        // Use EDID serial number for stable IDs if available
+        if let Some(ref serial) = self.edid_serial {
+            format!("ddc-{}", serial)
+        } else {
+            // Fallback to old I2C-based ID (unstable across reboots)
+            // This will be logged as a warning during enumeration
+            self.display.info.id.clone()
+        }
     }
 
     fn name(&self) -> String {

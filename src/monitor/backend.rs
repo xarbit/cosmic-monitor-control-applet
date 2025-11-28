@@ -67,6 +67,8 @@ impl DisplayBackend {
 pub struct MonitorInfo {
     pub name: String,
     pub brightness: u16,
+    pub connector_name: Option<String>,
+    pub edid_serial: Option<String>,
 }
 
 #[derive(Debug, Clone)]

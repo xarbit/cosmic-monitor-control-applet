@@ -20,9 +20,11 @@ mod error;
 mod hotplug;
 mod icon;
 mod localize;
+mod migrations;
 mod monitor;
 mod permissions;
 mod protocols;
+mod randr;
 mod view;
 
 fn setup_logs() {
@@ -74,6 +76,9 @@ fn main() -> cosmic::iced::Result {
             (None, Config::default())
         }
     };
+
+    // Check for old config format and log migration warning
+    migrations::check_v1_to_v2_migration(&config);
 
     cosmic::applet::run::<AppState>((config_handler, config))
 }
