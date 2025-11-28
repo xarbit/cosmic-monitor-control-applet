@@ -15,8 +15,8 @@ sync_brightness_keys = Listen to brightness keys
 minimum_brightness = Minimum Brightness
 about = About
 
-# Brightness profiles
-profiles = Brightness Profiles
+# Display profiles
+profiles = Profiles
 save_profile = Save Profile
 load_profile = Load Profile
 delete_profile = Delete

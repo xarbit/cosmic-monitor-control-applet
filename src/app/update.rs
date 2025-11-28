@@ -253,6 +253,7 @@ impl AppState {
                 self.profile_dialog_open = true;
                 self.profile_name_input = String::new();
                 self.editing_profile = None;
+                self.profiles_expanded = true;  // Ensure section is expanded when opening dialog
             }
             AppMsg::OpenEditProfileDialog(name) => {
                 self.profile_dialog_open = true;
@@ -271,30 +272,74 @@ impl AppState {
                 let name = self.profile_name_input.trim().to_string();
 
                 let profile = if let Some(old_name) = &self.editing_profile {
-                    // Editing existing profile - preserve brightness values, update name
+                    // Editing existing profile - preserve all values, update name
                     if let Some(existing_profile) = self.config.get_profile(old_name).cloned() {
                         // If name changed, this will be handled by save_profile removing old name
-                        BrightnessProfile::new(name.clone(), existing_profile.brightness_values)
+                        BrightnessProfile {
+                            name: name.clone(),
+                            brightness_values: existing_profile.brightness_values,
+                            scale_values: existing_profile.scale_values,
+                            transform_values: existing_profile.transform_values,
+                            position_values: existing_profile.position_values,
+                        }
                     } else {
                         warn!("Editing profile '{}' not found, creating new", old_name);
                         // Fallback: collect current values
                         let mut brightness_values = HashMap::new();
+                        let mut scale_values = HashMap::new();
+                        let mut transform_values = HashMap::new();
+                        let mut position_values = HashMap::new();
+
                         for (id, monitor) in &self.monitors {
                             let gamma = self.config.get_gamma_map(id);
                             let brightness = get_mapped_brightness(monitor.slider_brightness, gamma);
                             brightness_values.insert(id.clone(), brightness);
+
+                            if let Some(ref output_info) = monitor.output_info {
+                                scale_values.insert(id.clone(), output_info.scale);
+                                transform_values.insert(id.clone(), output_info.transform.clone());
+                                position_values.insert(id.clone(), output_info.position);
+                            }
                         }
-                        BrightnessProfile::new(name.clone(), brightness_values)
+                        BrightnessProfile {
+                            name: name.clone(),
+                            brightness_values,
+                            scale_values,
+                            transform_values,
+                            position_values,
+                        }
                     }
                 } else {
-                    // Creating new profile - collect current brightness values from all monitors
+                    // Creating new profile - collect current brightness and display settings from all monitors
                     let mut brightness_values = HashMap::new();
+                    let mut scale_values = HashMap::new();
+                    let mut transform_values = HashMap::new();
+                    let mut position_values = HashMap::new();
+
                     for (id, monitor) in &self.monitors {
                         let gamma = self.config.get_gamma_map(id);
                         let brightness = get_mapped_brightness(monitor.slider_brightness, gamma);
                         brightness_values.insert(id.clone(), brightness);
+
+                        // Collect display settings from output_info if available
+                        if let Some(ref output_info) = monitor.output_info {
+                            info!("Saving profile - Monitor {}: scale={}, transform='{}', position=({}, {})",
+                                  id, output_info.scale, output_info.transform, output_info.position.0, output_info.position.1);
+                            scale_values.insert(id.clone(), output_info.scale);
+                            transform_values.insert(id.clone(), output_info.transform.clone());
+                            position_values.insert(id.clone(), output_info.position);
+                        } else {
+                            warn!("Saving profile - Monitor {} has no output_info", id);
+                        }
                     }
-                    BrightnessProfile::new(name.clone(), brightness_values)
+
+                    BrightnessProfile {
+                        name: name.clone(),
+                        brightness_values,
+                        scale_values,
+                        transform_values,
+                        position_values,
+                    }
                 };
 
                 // Update config
@@ -336,19 +381,21 @@ impl AppState {
 
                 // Clone the profile data to avoid borrow checker issues
                 if let Some(profile) = self.config.get_profile(&name).cloned() {
-                    info!("Profile '{}' found with {} monitors", name, profile.brightness_values.len());
+                    info!("Profile '{}' found with {} monitors, {} scales, {} transforms, {} positions",
+                          name, profile.brightness_values.len(), profile.scale_values.len(),
+                          profile.transform_values.len(), profile.position_values.len());
 
                     // Collect all brightness commands to send as a batch
                     let mut batch_commands = Vec::new();
 
                     // Apply brightness values to all monitors in the profile
-                    for (id, brightness) in profile.brightness_values {
+                    for (id, brightness) in &profile.brightness_values {
                         info!("Profile '{}': Processing monitor {} -> {}%", name, id, brightness);
 
-                        if self.monitors.contains_key(&id) {
+                        if self.monitors.contains_key(id) {
                             // Prepare hardware command
-                            let min_brightness = self.config.get_min_brightness(&id);
-                            let clamped_brightness = brightness.max(min_brightness);
+                            let min_brightness = self.config.get_min_brightness(id);
+                            let clamped_brightness = (*brightness).max(min_brightness);
 
                             info!(">>> Preparing brightness command: {} = {}% (clamped from {}%)",
                                   id, clamped_brightness, brightness);
@@ -356,8 +403,8 @@ impl AppState {
                             batch_commands.push((id.clone(), clamped_brightness));
 
                             // Update UI state
-                            if let Some(monitor) = self.monitors.get_mut(&id) {
-                                let gamma = self.config.get_gamma_map(&id);
+                            if let Some(monitor) = self.monitors.get_mut(id) {
+                                let gamma = self.config.get_gamma_map(id);
                                 let old_slider = monitor.slider_brightness;
                                 monitor.set_slider_brightness(clamped_brightness, gamma);
                                 info!("Updated UI slider for {}: {:.2} -> {:.2}",
@@ -372,6 +419,81 @@ impl AppState {
                     if !batch_commands.is_empty() {
                         info!(">>> Sending batch of {} brightness commands", batch_commands.len());
                         self.send(EventToSub::SetBatch(batch_commands));
+                    }
+
+                    // Apply display settings (scale, transform, position) from profile
+                    for (id, scale) in &profile.scale_values {
+                        if let Some(monitor) = self.monitors.get_mut(id) {
+                            if let Some(ref output_info) = monitor.output_info {
+                                if let Some(ref mode) = output_info.current_mode {
+                                    let connector = output_info.connector_name.clone();
+                                    let mode_clone = mode.clone();
+                                    let scale_val = *scale;
+
+                                    info!("Profile '{}': Applying scale {} to monitor {}", name, scale_val, id);
+
+                                    tokio::spawn(async move {
+                                        if let Err(e) = crate::randr::apply_scale(&connector, &mode_clone, scale_val).await {
+                                            error!("Failed to apply scale from profile to {}: {}", connector, e);
+                                        }
+                                    });
+
+                                    // Update UI state immediately
+                                    if let Some(ref mut output_info) = monitor.output_info {
+                                        output_info.scale = scale_val;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    for (id, transform) in &profile.transform_values {
+                        if let Some(monitor) = self.monitors.get_mut(id) {
+                            if let Some(ref output_info) = monitor.output_info {
+                                if let Some(ref mode) = output_info.current_mode {
+                                    let connector = output_info.connector_name.clone();
+                                    let mode_clone = mode.clone();
+                                    let transform_val = transform.clone();
+                                    let transform_val_ui = transform.clone();
+
+                                    info!("Profile '{}': Applying transform {} to monitor {}", name, transform_val, id);
+
+                                    tokio::spawn(async move {
+                                        if let Err(e) = crate::randr::apply_transform(&connector, &mode_clone, &transform_val).await {
+                                            error!("Failed to apply transform from profile to {}: {}", connector, e);
+                                        }
+                                    });
+
+                                    // Update UI state immediately
+                                    if let Some(ref mut output_info) = monitor.output_info {
+                                        output_info.transform = transform_val_ui;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    for (id, (x, y)) in &profile.position_values {
+                        if let Some(monitor) = self.monitors.get_mut(id) {
+                            if let Some(ref output_info) = monitor.output_info {
+                                let connector = output_info.connector_name.clone();
+                                let x_val = *x;
+                                let y_val = *y;
+
+                                info!("Profile '{}': Applying position ({}, {}) to monitor {}", name, x_val, y_val, id);
+
+                                tokio::spawn(async move {
+                                    if let Err(e) = crate::randr::apply_position(&connector, x_val, y_val).await {
+                                        error!("Failed to apply position from profile to {}: {}", connector, e);
+                                    }
+                                });
+
+                                // Update UI state immediately
+                                if let Some(ref mut output_info) = monitor.output_info {
+                                    output_info.position = (x_val, y_val);
+                                }
+                            }
+                        }
                     }
 
                     info!(">>> LoadProfile '{}' processing complete", name);

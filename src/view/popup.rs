@@ -2,8 +2,8 @@ use crate::app::{AppMsg, AppState};
 use crate::fl;
 use cosmic::Element;
 use cosmic::applet::padded_control;
-use cosmic::iced::Alignment;
-use cosmic::widget::{button, column, divider, horizontal_space, icon, row, text, tooltip, Space};
+use cosmic::iced::{Alignment, Length};
+use cosmic::widget::{button, column, divider, horizontal_space, icon, row, scrollable, text, tooltip, Space};
 use cosmic::{cosmic_theme, theme};
 
 use super::empty_state::empty_state_view;
@@ -21,7 +21,7 @@ impl AppState {
 
         let mut col = column().spacing(0);
 
-        // Top bar with rescan button in top-right corner (only in normal view)
+        // Top bar with buttons in top-right corner (only in normal view)
         if !self.show_permission_view {
             col = col
                 .push(Space::with_height(space_m))
@@ -30,6 +30,15 @@ impl AppState {
                         .align_y(Alignment::Center)
                         .push(Space::with_width(space_l))
                         .push(horizontal_space())
+                        .push(
+                            tooltip(
+                                button::icon(icon::from_name("security-medium-symbolic"))
+                                    .on_press(AppMsg::TogglePermissionView),
+                                text(fl!("permissions")),
+                                tooltip::Position::Bottom,
+                            )
+                        )
+                        .push(Space::with_width(space_xxs))
                         .push(
                             tooltip(
                                 button::icon(icon::from_name("help-about-symbolic"))
@@ -107,23 +116,16 @@ impl AppState {
         // Add profiles section if there are monitors
         content = content.push_maybe(self.profiles_view());
 
-        col.push(content
+        // Wrap content in scrollable with max height (about 500px)
+        let scrollable_content = scrollable(content)
+            .height(Length::Shrink)
+            .width(Length::Fill);
+
+        col.push(scrollable_content)
             .push_maybe(
                 (!self.monitors.is_empty()).then(|| padded_control(divider::horizontal::default())),
             )
-            .push(padded_control(
-                row()
-                    .align_y(Alignment::Center)
-                    .push(text(fl!("permissions")))
-                    .push(horizontal_space())
-                    .push(
-                        button::icon(icon::from_name("security-medium-symbolic"))
-                            .on_press(AppMsg::TogglePermissionView)
-                    )
-            ))
-            .push(padded_control(divider::horizontal::default()))
             .push(self.dark_mode_view())
-        )
-        .into()
+            .into()
     }
 }

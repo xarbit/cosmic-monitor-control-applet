@@ -199,11 +199,14 @@ impl AppState {
     pub fn close_popup(&mut self) -> Task<AppMsg> {
         for mon in self.monitors.values_mut() {
             mon.settings_expanded = false;
+            mon.info_expanded = false;
         }
 
-        // Reset permission view and about view when closing popup
+        // Reset permission view, about view, and profiles section when closing popup
         self.show_permission_view = false;
         self.show_about_view = false;
+        self.profiles_expanded = false;
+        self.profile_dialog_open = false;
 
         if let Some(popup) = self.popup.take() {
             self.last_quit = Some((now(), popup.kind));

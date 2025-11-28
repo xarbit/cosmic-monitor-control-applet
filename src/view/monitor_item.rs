@@ -81,9 +81,11 @@ impl AppState {
                     .push(
                         column()
                             .spacing(space_xxxs)
+                            .width(Length::Fill)
                             .push(
                                 text(format_display_name(&monitor.name, &monitor.connector_name))
                                     .size(12)
+                                    .wrapping(cosmic::iced::widget::text::Wrapping::Word)
                             )
                             .push(
                                 text(id)
