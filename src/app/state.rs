@@ -17,7 +17,10 @@ pub struct MonitorState {
     /// Between 0 and 1
     pub slider_brightness: f32,
     pub settings_expanded: bool,
+    pub info_expanded: bool,
     pub connector_name: Option<String>,
+    /// Output info from cosmic-randr (if available)
+    pub output_info: Option<crate::randr::OutputInfo>,
 }
 
 pub fn get_mapped_brightness(slider_brightness: f32, gamma: f32) -> u16 {
@@ -151,13 +154,15 @@ impl AppState {
                 (
                     id.clone(),
                     MonitorState {
-                        name: m.name,
+                        name: m.name.clone(),
                         slider_brightness: get_slider_brightness(
                             m.brightness,
                             self.config.get_gamma_map(&id),
                         ),
                         settings_expanded: false,
-                        connector_name: m.connector_name,
+                        info_expanded: false,
+                        connector_name: m.connector_name.clone(),
+                        output_info: None,  // Will be populated when we query cosmic-randr
                     },
                 )
             })

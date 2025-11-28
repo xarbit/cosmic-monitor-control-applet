@@ -86,6 +86,33 @@ impl AppState {
                     mon.settings_expanded = !mon.settings_expanded;
                 }
             }
+            AppMsg::ToggleMonInfo(id) => {
+                if let Some(mon) = self.monitors.get_mut(&id) {
+                    mon.info_expanded = !mon.info_expanded;
+                    // TODO: Fetch cosmic-randr output info when expanding
+                }
+            }
+            AppMsg::SetMonScale(id, scale) => {
+                self.update_monitor_config(&id, |monitor| {
+                    monitor.scale = Some(scale);
+                });
+                // TODO: Execute cosmic-randr command to apply scale
+                info!("Set scale for {}: {}", id, scale);
+            }
+            AppMsg::SetMonTransform(id, transform) => {
+                self.update_monitor_config(&id, |monitor| {
+                    monitor.transform = Some(transform.clone());
+                });
+                // TODO: Execute cosmic-randr command to apply transform
+                info!("Set transform for {}: {}", id, transform);
+            }
+            AppMsg::SetMonPosition(id, x, y) => {
+                self.update_monitor_config(&id, |monitor| {
+                    monitor.position = Some((x, y));
+                });
+                // TODO: Execute cosmic-randr command to apply position
+                info!("Set position for {}: ({}, {})", id, x, y);
+            }
             AppMsg::SetMonitorSyncEnabled(id, enabled) => {
                 self.update_monitor_config(&id, |monitor| {
                     monitor.sync_with_brightness_keys = enabled;
