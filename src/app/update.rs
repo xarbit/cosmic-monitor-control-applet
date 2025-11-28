@@ -98,7 +98,7 @@ impl AppState {
                 });
 
                 // Apply scale via cosmic-randr if we have the necessary info
-                if let Some(monitor) = self.monitors.get(&id) {
+                if let Some(monitor) = self.monitors.get_mut(&id) {
                     if let Some(ref output_info) = monitor.output_info {
                         if let Some(ref mode) = output_info.current_mode {
                             let connector = output_info.connector_name.clone();
@@ -109,6 +109,11 @@ impl AppState {
                                     error!("Failed to apply scale to {}: {}", connector, e);
                                 }
                             });
+
+                            // Update the UI state immediately for instant feedback
+                            if let Some(ref mut output_info) = monitor.output_info {
+                                output_info.scale = scale;
+                            }
                         } else {
                             warn!("Cannot apply scale to {}: no current mode available", id);
                         }
@@ -125,7 +130,7 @@ impl AppState {
                 });
 
                 // Apply transform via cosmic-randr if we have the necessary info
-                if let Some(monitor) = self.monitors.get(&id) {
+                if let Some(monitor) = self.monitors.get_mut(&id) {
                     if let Some(ref output_info) = monitor.output_info {
                         if let Some(ref mode) = output_info.current_mode {
                             let connector = output_info.connector_name.clone();
@@ -137,6 +142,11 @@ impl AppState {
                                     error!("Failed to apply transform to {}: {}", connector, e);
                                 }
                             });
+
+                            // Update the UI state immediately for instant feedback
+                            if let Some(ref mut output_info) = monitor.output_info {
+                                output_info.transform = transform.clone();
+                            }
                         } else {
                             warn!("Cannot apply transform to {}: no current mode available", id);
                         }
@@ -153,7 +163,7 @@ impl AppState {
                 });
 
                 // Apply position via cosmic-randr if we have the necessary info
-                if let Some(monitor) = self.monitors.get(&id) {
+                if let Some(monitor) = self.monitors.get_mut(&id) {
                     if let Some(ref output_info) = monitor.output_info {
                         let connector = output_info.connector_name.clone();
 
@@ -162,6 +172,11 @@ impl AppState {
                                 error!("Failed to apply position to {}: {}", connector, e);
                             }
                         });
+
+                        // Update the UI state immediately for instant feedback
+                        if let Some(ref mut output_info) = monitor.output_info {
+                            output_info.position = (x, y);
+                        }
                     } else {
                         warn!("Cannot apply position to {}: no output info available", id);
                     }
