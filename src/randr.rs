@@ -6,7 +6,6 @@
 //! This module provides functionality to correlate DDC/CI and Apple HID displays
 //! with COSMIC's Wayland output information (connector names, serial numbers, etc.)
 
-use cosmic_randr_shell::{List, Output, OutputKey};
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
@@ -67,9 +66,27 @@ pub fn find_matching_output(
     model_name: &str,
     outputs: &HashMap<String, OutputInfo>,
 ) -> Option<OutputInfo> {
+    // Extract just the model part (remove manufacturer prefix if present)
+    // e.g., "Apple Inc. Studio Display" -> "Studio Display"
+    let clean_model = model_name
+        .split_whitespace()
+        .filter(|word| {
+            // Skip manufacturer-like words
+            !word.eq_ignore_ascii_case("Inc.")
+                && !word.eq_ignore_ascii_case("Computer")
+                && !word.eq_ignore_ascii_case("Corp")
+                && !word.eq_ignore_ascii_case("Ltd")
+                && !word.eq_ignore_ascii_case("Apple")
+                && !word.eq_ignore_ascii_case("Dell")
+                && !word.eq_ignore_ascii_case("LG")
+                && !word.eq_ignore_ascii_case("Samsung")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
     // First try exact model match (case-insensitive)
     for output in outputs.values() {
-        if output.model.eq_ignore_ascii_case(model_name) {
+        if output.model.eq_ignore_ascii_case(&clean_model) {
             debug!("Exact model match: {} -> {}", model_name, output.connector_name);
             return Some(output.clone());
         }
@@ -77,8 +94,8 @@ pub fn find_matching_output(
 
     // Try partial match (model name contains or is contained in output model)
     for output in outputs.values() {
-        if output.model.to_lowercase().contains(&model_name.to_lowercase())
-            || model_name.to_lowercase().contains(&output.model.to_lowercase())
+        if output.model.to_lowercase().contains(&clean_model.to_lowercase())
+            || clean_model.to_lowercase().contains(&output.model.to_lowercase())
         {
             debug!("Partial model match: {} -> {}", model_name, output.connector_name);
             return Some(output.clone());

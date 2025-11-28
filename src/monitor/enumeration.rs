@@ -219,5 +219,34 @@ pub async fn enumerate_displays(
 
     info!("=== END ENUMERATE: Found {} monitors ===", res.len());
 
+    // Correlate displays with Wayland outputs from cosmic-randr
+    if !res.is_empty() {
+        match crate::randr::get_outputs().await {
+            Ok(outputs) => {
+                info!("Found {} Wayland output(s) from cosmic-randr", outputs.len());
+
+                // Try to match each display with a Wayland output
+                for (id, mon) in res.iter_mut() {
+                    // Try to find matching output by model name
+                    if let Some(output_info) = crate::randr::find_matching_output(&mon.name, &outputs) {
+                        if output_info.enabled {
+                            info!("Matched display '{}' ({}) to connector '{}'",
+                                mon.name, id, output_info.connector_name);
+                            mon.connector_name = Some(output_info.connector_name);
+                        } else {
+                            debug!("Found match for '{}' but output is disabled", mon.name);
+                        }
+                    } else {
+                        debug!("No matching Wayland output found for display: {} ({})", mon.name, id);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to query cosmic-randr for output info: {}", e);
+                debug!("Display connector names will not be available");
+            }
+        }
+    }
+
     (res, displays, some_failed)
 }

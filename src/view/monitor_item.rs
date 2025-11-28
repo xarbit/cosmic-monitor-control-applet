@@ -10,6 +10,14 @@ use cosmic::{cosmic_theme, theme};
 
 use super::common::brightness_icon;
 
+/// Format display name with connector if available
+fn format_display_name(name: &str, connector: &Option<String>) -> String {
+    match connector {
+        Some(conn) => format!("{} ({})", name, conn),
+        None => name.to_string(),
+    }
+}
+
 impl AppState {
     /// View for a list of all monitors
     pub fn monitors_view(&self) -> Option<Element<'_, AppMsg>> {
@@ -56,7 +64,7 @@ impl AppState {
                         tooltip(
                             icon::icon(brightness_icon(monitor.slider_brightness))
                                 .size(24),
-                            text(&monitor.name),
+                            text(format_display_name(&monitor.name, &monitor.connector_name)),
                             tooltip::Position::Right,
                         )
                     )
@@ -90,7 +98,7 @@ impl AppState {
                                 column()
                                     .spacing(space_xxxs)
                                     .push(
-                                        text(&monitor.name)
+                                        text(format_display_name(&monitor.name, &monitor.connector_name))
                                             .size(12)
                                     )
                                     .push(
