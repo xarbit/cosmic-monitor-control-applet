@@ -3,8 +3,8 @@ use crate::fl;
 use cosmic::Element;
 use cosmic::iced::{Alignment, Length};
 use cosmic::widget::{
-    button, column, container, horizontal_space, icon, mouse_area, row, slider, text, toggler,
-    tooltip,
+    button, column, container, horizontal_space, icon, mouse_area, row, slider, text,
+    toggler, tooltip,
 };
 use cosmic::{cosmic_theme, theme};
 
@@ -141,10 +141,10 @@ fn monitor_settings_view<'a>(
 
     let min_brightness = app_state.config.get_min_brightness(id);
 
-    container(
-        column()
-            .spacing(space_xs)
-            .push(
+    let mut settings_column = column()
+            .spacing(space_xs);
+
+    settings_column = settings_column.push(
                 // Brightness Curve (Gamma) Setting
                 tooltip(
                     row()
@@ -181,8 +181,8 @@ fn monitor_settings_view<'a>(
                     text(fl!("brightness_curve")),
                     tooltip::Position::Top,
                 )
-            )
-            .push(
+            );
+    settings_column = settings_column.push(
                 // Minimum Brightness Setting
                 tooltip(
                     row()
@@ -208,8 +208,8 @@ fn monitor_settings_view<'a>(
                     text(fl!("minimum_brightness")),
                     tooltip::Position::Top,
                 )
-            )
-            .push(
+            );
+    settings_column = settings_column.push(
                 // Sync with Brightness Keys Setting
                 tooltip(
                     row()
@@ -228,11 +228,146 @@ fn monitor_settings_view<'a>(
                     text(fl!("sync_brightness_keys")),
                     tooltip::Position::Top,
                 )
-            )
-    )
-    .padding(12)
-    .class(cosmic::style::Container::Card)
-    .into()
+            );
+
+    // Add display configuration section if output_info is available
+    if let Some(monitor) = app_state.monitors.get(id) {
+        if let Some(ref output_info) = monitor.output_info {
+            // Display Configuration Header
+            settings_column = settings_column.push(
+                row()
+                    .spacing(space_s)
+                    .push(text("Display Configuration").size(12))
+            );
+
+            // Rotation/Transform buttons
+            let current_transform = &output_info.transform;
+            settings_column = settings_column.push(
+                tooltip(
+                    row()
+                        .spacing(space_xs)
+                        .align_y(Alignment::Center)
+                        .push(
+                            icon::from_name("object-rotate-right-symbolic")
+                                .size(16)
+                                .symbolic(true)
+                        )
+                        .push(horizontal_space())
+                        .push(
+                            button::text(if current_transform == "normal" { "▶ ↑" } else { "↑" })
+                                .padding([space_xxxs, space_xs])
+                                .on_press(AppMsg::SetMonTransform(id.to_string(), "normal".to_string()))
+                        )
+                        .push(
+                            button::text(if current_transform == "90" { "▶ →" } else { "→" })
+                                .padding([space_xxxs, space_xs])
+                                .on_press(AppMsg::SetMonTransform(id.to_string(), "90".to_string()))
+                        )
+                        .push(
+                            button::text(if current_transform == "180" { "▶ ↓" } else { "↓" })
+                                .padding([space_xxxs, space_xs])
+                                .on_press(AppMsg::SetMonTransform(id.to_string(), "180".to_string()))
+                        )
+                        .push(
+                            button::text(if current_transform == "270" { "▶ ←" } else { "←" })
+                                .padding([space_xxxs, space_xs])
+                                .on_press(AppMsg::SetMonTransform(id.to_string(), "270".to_string()))
+                        )
+                        .push(horizontal_space()),
+                    text(format!("Rotation ({})", current_transform)),
+                    tooltip::Position::Top,
+                )
+            );
+
+            // Scale control
+            let current_scale = output_info.scale;
+            let scale_options = vec![1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+            settings_column = settings_column.push(
+                tooltip(
+                    row()
+                        .spacing(space_s)
+                        .align_y(Alignment::Center)
+                        .push(
+                            icon::from_name("zoom-in-symbolic")
+                                .size(16)
+                                .symbolic(true)
+                        )
+                        .push(horizontal_space())
+                        .push(
+                            button::text("-")
+                                .padding([space_xxxs, space_xs])
+                                .on_press_maybe({
+                                    let current_idx = scale_options.iter().position(|&s| (s - current_scale).abs() < 0.01);
+                                    current_idx.and_then(|idx| {
+                                        if idx > 0 {
+                                            Some(AppMsg::SetMonScale(id.to_string(), scale_options[idx - 1]))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                        )
+                        .push(
+                            text(format!("{:.2}×", current_scale))
+                                .size(16)
+                                .width(Length::Fixed(50.0))
+                        )
+                        .push(
+                            button::text("+")
+                                .padding([space_xxxs, space_xs])
+                                .on_press_maybe({
+                                    let current_idx = scale_options.iter().position(|&s| (s - current_scale).abs() < 0.01);
+                                    current_idx.and_then(|idx| {
+                                        if idx < scale_options.len() - 1 {
+                                            Some(AppMsg::SetMonScale(id.to_string(), scale_options[idx + 1]))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                })
+                        )
+                        .push(horizontal_space()),
+                    text("Scale"),
+                    tooltip::Position::Top,
+                )
+            );
+
+            // Position controls
+            let (pos_x, pos_y) = output_info.position;
+            settings_column = settings_column.push(
+                tooltip(
+                    row()
+                        .spacing(space_s)
+                        .align_y(Alignment::Center)
+                        .push(
+                            icon::from_name("preferences-desktop-display-symbolic")
+                                .size(16)
+                                .symbolic(true)
+                        )
+                        .push(text("X:").size(12))
+                        .push(
+                            text(format!("{}", pos_x))
+                                .size(16)
+                                .width(Length::Fixed(50.0))
+                        )
+                        .push(text("Y:").size(12))
+                        .push(
+                            text(format!("{}", pos_y))
+                                .size(16)
+                                .width(Length::Fixed(50.0))
+                        )
+                        .push(horizontal_space()),
+                    text("Position (read-only)"),
+                    tooltip::Position::Top,
+                )
+            );
+        }
+    }
+
+    container(settings_column)
+        .padding(12)
+        .class(cosmic::style::Container::Card)
+        .into()
 }
 
 /// Monitor information view showing all display details
