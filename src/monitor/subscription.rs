@@ -118,7 +118,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     }
 
                     // Query cosmic-randr to get connector names and serial numbers for all displays (including cached)
-                    if !res.is_empty() {
+                    let randr_outputs = if !res.is_empty() {
                         match crate::randr::get_outputs().await {
                             Ok(outputs) => {
                                 for (_id, mon) in res.iter_mut() {
@@ -135,12 +135,16 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                                         }
                                     }
                                 }
+                                outputs
                             }
                             Err(e) => {
                                 debug!("Failed to query cosmic-randr for cached displays: {}", e);
+                                std::collections::HashMap::new()
                             }
                         }
-                    }
+                    } else {
+                        std::collections::HashMap::new()
+                    };
 
                     // If we have at least one monitor, send it to the UI immediately
                     // and retry failed monitors in the background
@@ -164,7 +168,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                     };
 
                     if let Err(e) = output
-                        .send(AppMsg::SubscriptionReady((res, tx.clone())))
+                        .send(AppMsg::SubscriptionReady((res, tx.clone(), randr_outputs)))
                         .await
                     {
                         error!("Failed to send SubscriptionReady: {:?}", e);

@@ -142,7 +142,7 @@ impl AppState {
         }
     }
 
-    pub fn set_monitors(&mut self, monitors: HashMap<DisplayId, MonitorInfo>, sender: Sender<EventToSub>) {
+    pub fn set_monitors(&mut self, monitors: HashMap<DisplayId, MonitorInfo>, sender: Sender<EventToSub>, randr_outputs: HashMap<String, crate::randr::OutputInfo>) {
         info!("SubscriptionReady received with {} monitors", monitors.len());
         for (id, m) in monitors.iter() {
             info!("  - Monitor: {} ({})", m.name, id);
@@ -151,6 +151,25 @@ impl AppState {
         self.monitors = monitors
             .into_iter()
             .map(|(id, m)| {
+                // Try to find matching cosmic-randr output info for this monitor
+                let output_info = if let Some(ref conn_name) = m.connector_name {
+                    // If we have a connector name, look it up directly in the randr outputs
+                    randr_outputs.get(conn_name).cloned()
+                } else {
+                    // Otherwise try to match by model name
+                    crate::randr::find_matching_output_with_serial(
+                        &m.name,
+                        m.edid_serial.as_deref(),
+                        &randr_outputs
+                    )
+                };
+
+                if output_info.is_some() {
+                    debug!("Populated output_info for monitor {} ({})", m.name, id);
+                } else {
+                    debug!("No output_info available for monitor {} ({})", m.name, id);
+                }
+
                 (
                     id.clone(),
                     MonitorState {
@@ -162,7 +181,7 @@ impl AppState {
                         settings_expanded: false,
                         info_expanded: false,
                         connector_name: m.connector_name.clone(),
-                        output_info: None,  // Will be populated when we query cosmic-randr
+                        output_info,
                     },
                 )
             })

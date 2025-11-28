@@ -16,7 +16,7 @@ impl AppState {
         match &message {
             AppMsg::RefreshMonitors => info!(">>> UPDATE: AppMsg::RefreshMonitors (manual refresh button)"),
             AppMsg::HotplugDetected => info!(">>> UPDATE: AppMsg::HotplugDetected (automatic hotplug)"),
-            AppMsg::SubscriptionReady((monitors, _)) => info!(">>> UPDATE: AppMsg::SubscriptionReady with {} monitors", monitors.len()),
+            AppMsg::SubscriptionReady((monitors, _, _)) => info!(">>> UPDATE: AppMsg::SubscriptionReady with {} monitors", monitors.len()),
             _ => debug!("{:?}", message),
         }
 
@@ -65,8 +65,8 @@ impl AppState {
                     error!("can't write theme mode {e}");
                 }
             }
-            AppMsg::SubscriptionReady((monitors, sender)) => {
-                self.set_monitors(monitors, sender);
+            AppMsg::SubscriptionReady((monitors, sender, randr_outputs)) => {
+                self.set_monitors(monitors, sender, randr_outputs);
             }
             AppMsg::BrightnessWasUpdated(id, brightness) => {
                 self.update_brightness(id, brightness);

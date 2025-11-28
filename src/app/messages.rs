@@ -27,8 +27,8 @@ pub enum AppMsg {
     SetMonTransform(DisplayId, String),  // Set display transform/rotation
     SetMonPosition(DisplayId, i32, i32),  // Set display position (x, y)
 
-    /// Send from the subscription
-    SubscriptionReady((HashMap<DisplayId, MonitorInfo>, Sender<EventToSub>)),
+    /// Send from the subscription (monitors, sender, randr_outputs)
+    SubscriptionReady((HashMap<DisplayId, MonitorInfo>, Sender<EventToSub>, HashMap<String, crate::randr::OutputInfo>)),
     /// Send from the subscription
     BrightnessWasUpdated(DisplayId, u16),
     Refresh,
