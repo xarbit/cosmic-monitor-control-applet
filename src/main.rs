@@ -23,6 +23,7 @@ mod localize;
 mod monitor;
 mod permissions;
 mod protocols;
+mod randr;
 mod view;
 
 fn setup_logs() {

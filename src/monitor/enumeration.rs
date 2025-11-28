@@ -126,6 +126,7 @@ pub async fn enumerate_displays(
                 let mon = MonitorInfo {
                     name,
                     brightness,
+                    connector_name: None,
                 };
 
                 Ok((id, mon, backend))
@@ -191,6 +192,7 @@ pub async fn enumerate_displays(
                                 let mon = MonitorInfo {
                                     name,
                                     brightness,
+                                    connector_name: None,
                                 };
 
                                 results.push((id, mon, backend));

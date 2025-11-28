@@ -83,7 +83,7 @@ pub fn sub(display_manager: DisplayManager) -> impl Stream<Item = AppMsg> {
                         match check_result {
                             Ok(Ok(Some((name, brightness)))) => {
                                 // Display is alive and responsive
-                                res.insert(id.clone(), super::backend::MonitorInfo { name, brightness });
+                                res.insert(id.clone(), super::backend::MonitorInfo { name, brightness, connector_name: None });
                                 all_displays.insert(id.clone(), backend.clone());
                                 if is_re_enumerate {
                                     info!("Using cached display (quick read): {} (brightness: {})", id, brightness);
