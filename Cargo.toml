@@ -36,6 +36,7 @@ futures = { version = "0.3", optional = true }
 open = "5"
 ashpd = "0.9"
 url = "2"
+kdl = "6.5.0"
 
 [dependencies.cosmic-randr-shell]
 git = "https://github.com/pop-os/cosmic-randr"

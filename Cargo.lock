@@ -1105,6 +1105,7 @@ dependencies = [
  "hidapi",
  "i18n-embed",
  "i18n-embed-fl",
+ "kdl",
  "libc",
  "libcosmic",
  "once_cell",

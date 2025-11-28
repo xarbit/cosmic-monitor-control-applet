@@ -7,6 +7,7 @@
 //! with COSMIC's Wayland output information (connector names, serial numbers, etc.)
 
 use std::collections::HashMap;
+use std::process::Command;
 use tracing::{debug, error, info, warn};
 
 /// Information about a Wayland output from cosmic-randr
@@ -26,6 +27,72 @@ pub struct OutputInfo {
     pub physical_size: (u32, u32),
 }
 
+/// Parse serial numbers from cosmic-randr KDL output
+/// Returns a map of connector name -> serial number
+fn parse_serial_numbers_from_kdl() -> HashMap<String, String> {
+    let mut serials = HashMap::new();
+
+    // Run cosmic-randr list --kdl
+    let output = match Command::new("cosmic-randr")
+        .args(&["list", "--kdl"])
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            warn!("Failed to run cosmic-randr list --kdl: {}", e);
+            return serials;
+        }
+    };
+
+    if !output.status.success() {
+        warn!("cosmic-randr list --kdl failed with status: {}", output.status);
+        return serials;
+    }
+
+    let kdl_str = match String::from_utf8(output.stdout) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Failed to parse cosmic-randr output as UTF-8: {}", e);
+            return serials;
+        }
+    };
+
+    // Parse KDL
+    let doc = match kdl_str.parse::<kdl::KdlDocument>() {
+        Ok(d) => d,
+        Err(e) => {
+            warn!("Failed to parse KDL document: {}", e);
+            return serials;
+        }
+    };
+
+    // Extract serial numbers from each output node
+    for node in doc.nodes() {
+        if node.name().value() == "output" {
+            // Get connector name from first entry
+            if let Some(connector) = node.entries().first() {
+                if let Some(connector_name) = connector.value().as_string() {
+                    // Look for serial_number child node
+                    if let Some(children) = node.children() {
+                        for child in children.nodes() {
+                            if child.name().value() == "serial_number" {
+                                if let Some(serial_entry) = child.entries().first() {
+                                    if let Some(serial) = serial_entry.value().as_string() {
+                                        debug!("Found serial for {}: {}", connector_name, serial);
+                                        serials.insert(connector_name.to_string(), serial.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    serials
+}
+
 /// Fetches all Wayland output information from cosmic-randr
 pub async fn get_outputs() -> Result<HashMap<String, OutputInfo>, Box<dyn std::error::Error>> {
     info!("Fetching Wayland output information from cosmic-randr");
@@ -35,19 +102,24 @@ pub async fn get_outputs() -> Result<HashMap<String, OutputInfo>, Box<dyn std::e
         e
     })?;
 
+    // Parse serial numbers from KDL format
+    let serial_numbers = parse_serial_numbers_from_kdl();
+
     let mut outputs = HashMap::new();
 
     for (key, output) in list.outputs.iter() {
+        let serial = serial_numbers.get(&output.name).cloned();
+
         debug!(
-            "Found Wayland output: {} (enabled: {}, model: {})",
-            output.name, output.enabled, output.model
+            "Found Wayland output: {} (enabled: {}, model: {}, serial: {:?})",
+            output.name, output.enabled, output.model, serial
         );
 
         let info = OutputInfo {
             connector_name: output.name.clone(),
             make: output.make.clone(),
             model: output.model.clone(),
-            serial_number: None, // Will be extracted from KDL in next iteration
+            serial_number: serial,
             enabled: output.enabled,
             physical_size: output.physical,
         };
@@ -55,15 +127,28 @@ pub async fn get_outputs() -> Result<HashMap<String, OutputInfo>, Box<dyn std::e
         outputs.insert(output.name.clone(), info);
     }
 
-    info!("Found {} Wayland output(s) from cosmic-randr", outputs.len());
+    info!("Found {} Wayland output(s) from cosmic-randr ({} with serial numbers)",
+          outputs.len(), serial_numbers.len());
     Ok(outputs)
 }
 
 /// Attempts to correlate a display model name with a Wayland output
 ///
 /// This uses fuzzy matching on the model name to find the best match
+/// If serial_number is provided, it will be used as an additional matching criterion
 pub fn find_matching_output(
     model_name: &str,
+    outputs: &HashMap<String, OutputInfo>,
+) -> Option<OutputInfo> {
+    find_matching_output_with_serial(model_name, None, outputs)
+}
+
+/// Attempts to correlate a display with a Wayland output using model name and optional serial
+///
+/// Serial number matching is used to distinguish between multiple identical displays
+pub fn find_matching_output_with_serial(
+    model_name: &str,
+    edid_serial: Option<&str>,
     outputs: &HashMap<String, OutputInfo>,
 ) -> Option<OutputInfo> {
     // Extract manufacturer and model parts from the full name
@@ -95,7 +180,24 @@ pub fn find_matching_output(
         .collect::<Vec<_>>()
         .join(" ");
 
-    // First try exact match on both manufacturer and model (best match)
+    // First try exact match on manufacturer, model, AND serial (if provided) - most reliable!
+    if let (Some(mfr), Some(serial)) = (manufacturer, edid_serial) {
+        for output in outputs.values() {
+            if output.enabled {
+                if let (Some(output_make), Some(output_serial)) = (&output.make, &output.serial_number) {
+                    if output_make.to_lowercase().contains(&mfr.to_lowercase()) &&
+                       output.model.eq_ignore_ascii_case(&clean_model) &&
+                       output_serial == serial {
+                        debug!("Exact make+model+serial match: {} (serial: {}) -> {}",
+                               model_name, serial, output.connector_name);
+                        return Some(output.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Second try: exact match on manufacturer and model (without serial)
     if let Some(mfr) = manufacturer {
         for output in outputs.values() {
             if output.enabled {
@@ -111,7 +213,7 @@ pub fn find_matching_output(
         }
     }
 
-    // Second try: exact model match only (case-insensitive) - only enabled outputs
+    // Third try: exact model match only (case-insensitive) - only enabled outputs
     // Also try without spaces for model names like "StudioDisplay" vs "Studio Display"
     let clean_model_no_spaces = clean_model.replace(" ", "");
     for output in outputs.values() {
@@ -125,7 +227,7 @@ pub fn find_matching_output(
         }
     }
 
-    // Third try: partial match with manufacturer check
+    // Fourth try: partial match with manufacturer check
     if let Some(mfr) = manufacturer {
         for output in outputs.values() {
             if output.enabled {
